@@ -1,0 +1,18 @@
+version: "3.7"
+services:
+  loc-place-bot:
+    build: .
+    image: kozalosev/loc-place-bot
+    container_name: loc-place-bot
+    restart: unless-stopped
+    environment:
+      - TELOXIDE_TOKEN
+      - GOOGLE_MAPS_API_KEY
+      - RUST_LOG
+      - CACHE_TIME
+    expose:
+      - 8080
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    logging:
+      driver: local
