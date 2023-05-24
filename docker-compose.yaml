@@ -1,9 +1,9 @@
 version: "3.7"
 services:
-  loc-place-bot:
+  LocPlaceBot:
     build: .
-    image: kozalosev/loc-place-bot
-    container_name: loc-place-bot
+    image: kozalosev/locplacebot
+    container_name: locplacebot
     restart: unless-stopped
     environment:
       - TELOXIDE_TOKEN
