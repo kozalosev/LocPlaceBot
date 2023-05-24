@@ -2,7 +2,7 @@ const FINDER_ENV_API_KEY: &str = "GOOGLE_MAPS_API_KEY";
 
 #[derive(Debug)]
 pub struct Location {
-    address: String,
+    address: Option<String>,
     latitude: f64,
     longitude: f64
 }
@@ -13,11 +13,11 @@ pub struct LocFinder {
 
 impl Location {
     pub fn new(latitude: f64, longitude: f64) -> Location {
-        Location { address: String::new(), latitude, longitude }
+        Location { address: None, latitude, longitude }
     }
-    
-    pub fn address(&self) -> &str {
-        self.address.as_str()
+
+    pub fn address(&self) -> Option<String> {
+        self.address.clone()
     }
 
     pub fn latitude(&self) -> f64 {
@@ -33,7 +33,7 @@ impl LocFinder {
     pub fn init(api_key: &str) -> LocFinder {
         LocFinder { api_key: api_key.to_string() }
     }
-    
+
     pub fn from_env() -> LocFinder {
         let api_key = std::env::var(FINDER_ENV_API_KEY).expect("Google Maps API key is required!");
         Self::init(api_key.as_str())
@@ -54,7 +54,7 @@ impl LocFinder {
 }
 
 fn map_resp(v: &serde_json::Value) -> Option<Location> {
-    let address = v["formatted_address"].as_str()?.to_string();
+    let address = Some(v["formatted_address"].as_str()?.to_string());
 
     let loc = &v["geometry"]["location"];
     let latitude: f64 = loc["lat"].as_f64()?;

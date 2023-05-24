@@ -961,6 +961,7 @@ dependencies = [
  "serde_json",
  "teloxide",
  "tokio",
+ "uuid",
 ]
 
 [[package]]
@@ -1931,6 +1932,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "345444e32442451b267fc254ae85a209c64be56d2890e601a0c37ff0c3c5ecd2"
 dependencies = [
  "getrandom",
+ "rand",
 ]
 
 [[package]]

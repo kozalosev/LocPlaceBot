@@ -99,9 +99,12 @@ async fn inline_handler(bot: Bot, q: InlineQuery) -> Result<(), Box<dyn Error + 
 
 async fn send_locations(bot: Bot, query_id: &str, locations: Vec<Location>) -> Result<(), Box<dyn Error + Send + Sync>> {
     let results: Vec<InlineQueryResult> = locations.iter()
-        .map(|l| InlineQueryResult::Location(
-            InlineQueryResultLocation::new(l.address(), l.address(), l.latitude(), l.longitude())
-        ))
+        .map(|l| {
+            let uuid = uuid::Uuid::new_v4().to_string();
+            let address = l.address().unwrap_or(String::from("Point on the map"));
+            InlineQueryResult::Location(
+                InlineQueryResultLocation::new(uuid, address, l.latitude(), l.longitude())
+        )})
         .collect();
 
     let mut answer = bot.answer_inline_query(query_id, results);
