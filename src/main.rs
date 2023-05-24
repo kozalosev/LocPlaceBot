@@ -59,7 +59,7 @@ async fn main() -> io::Result<()> {
     prometheus.registry.register(Box::new(GOOGLE_API_REQUESTS_COUNTER.clone()))
         .expect("unable to register the Google Maps API requests counter");
     let srv_fut = HttpServer::new(move || App::new().wrap(prometheus.clone()))
-        .bind(("127.0.0.1", 8080))?
+        .bind(("0.0.0.0", 8080))?
         .run();
 
     let bot = Bot::from_env();
