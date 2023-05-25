@@ -1,17 +1,24 @@
 mod loc;
 
+use std::env::VarError;
 use std::error::Error;
-use std::io;
-use actix_web::{App, HttpServer};
-use actix_web_prom::PrometheusMetricsBuilder;
-use log::LevelFilter;
+use std::net::SocketAddr;
+use axum::routing::get;
+use axum_prometheus::PrometheusMetricLayer;
 use once_cell::sync::Lazy;
-use prometheus::{Counter, Opts};
+use prometheus::{Counter, Encoder, Opts, TextEncoder};
 use regex::Regex;
+use reqwest::Url;
 use teloxide::prelude::*;
 use teloxide::types::{InlineQueryResult, InlineQueryResultLocation, Me};
 use teloxide::types::ParseMode::MarkdownV2;
+use teloxide::update_listeners::{
+    webhooks::{axum_to_router, Options},
+    UpdateListener
+};
 use crate::loc::{Location, LocFinder};
+
+const ENV_WEBHOOK_URL: &str = "WEBHOOK_URL";
 
 static CACHE_TIME: Lazy<Option<u32>> = Lazy::new(|| std::env::var("CACHE_TIME")
     .ok()
@@ -42,38 +49,71 @@ static GOOGLE_API_REQUESTS_COUNTER: Lazy<Counter> = Lazy::new(|| {
 
 
 #[tokio::main]
-async fn main() -> io::Result<()> {
+async fn main() -> Result<(), Box<dyn Error>> {
     pretty_env_logger::init();
-    log::set_max_level(LevelFilter::Info);
 
-    let prometheus = PrometheusMetricsBuilder::new("bot")
-        .endpoint("/metrics")
-        .build()
-        .expect("unable to build Prometheus metrics");
-    prometheus.registry.register(Box::new(INLINE_COUNTER.clone()))
+    let prometheus = prometheus::Registry::new();
+    prometheus.register(Box::new(INLINE_COUNTER.clone()))
         .expect("unable to register the inline counter");
-    prometheus.registry.register(Box::new(INLINE_CHOSEN_COUNTER.clone()))
+    prometheus.register(Box::new(INLINE_CHOSEN_COUNTER.clone()))
         .expect("unable to register the inline chosen counter");
-    prometheus.registry.register(Box::new(MESSAGE_COUNTER.clone()))
+    prometheus.register(Box::new(MESSAGE_COUNTER.clone()))
         .expect("unable to register the message counter");
-    prometheus.registry.register(Box::new(GOOGLE_API_REQUESTS_COUNTER.clone()))
+    prometheus.register(Box::new(GOOGLE_API_REQUESTS_COUNTER.clone()))
         .expect("unable to register the Google Maps API requests counter");
-    let srv_fut = HttpServer::new(move || App::new().wrap(prometheus.clone()))
-        .bind(("0.0.0.0", 8080))?
-        .run();
+
+    let (prometheus_layer, metric_handle) = PrometheusMetricLayer::pair();
+    let metrics_router = axum::Router::new()
+        .route("/metrics", get(|| async move {
+            // Gather the metrics.
+            let mut buffer = vec![];
+            let metrics = prometheus.gather();
+            TextEncoder::new().encode(&metrics, &mut buffer).unwrap();
+            let custom_metrics = String::from_utf8(buffer).unwrap();
+
+            format!("{}\n{}", metric_handle.render(), custom_metrics);
+        }))
+        .layer(prometheus_layer);
 
     let bot = Bot::from_env();
     let handler = dptree::entry()
         .branch(Update::filter_inline_query().endpoint(inline_handler))
         .branch(Update::filter_message().endpoint(message_handler))
         .branch(Update::filter_chosen_inline_result().endpoint(inline_chosen_handler));
-    let mut bot_fut = Dispatcher::builder(bot, handler)
-        .enable_ctrlc_handler()
-        .build();
-    let bot_fut = bot_fut.dispatch();
 
-    let (res, _) = futures::future::join(srv_fut, bot_fut).await;
-    res
+    let webhook_url: Option<Url> = match std::env::var(ENV_WEBHOOK_URL) {
+        Ok(env_url) if env_url.len() > 0 => Some(env_url.parse()?),
+        Ok(env_url) if env_url.len() == 0 => None,
+        Err(VarError::NotPresent) => None,
+        _ => Err("invalid webhook URL!")?
+    };
+    let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
+    match webhook_url {
+        Some(url) => {
+            let (mut listener, stop_flag, bot_router) = axum_to_router(bot, Options::new(addr, url)).await?;
+            let stop_token = listener.stop_token();
+            axum::Server::bind(&addr)
+                .serve(metrics_router
+                    .nest_service("/webhook", bot_router)
+                    .into_make_service())
+                .with_graceful_shutdown(stop_flag)
+                .await
+                .map_err(|err| {
+                    stop_token.stop();
+                    err
+                })
+        }
+        None => {
+            let mut bot_fut = Dispatcher::builder(bot.clone(), handler)
+                .enable_ctrlc_handler()
+                .build();
+            let bot_fut = bot_fut.dispatch();
+            let srv = axum::Server::bind(&addr)
+                .serve(metrics_router.into_make_service());
+            let (res, _) = futures::future::join(srv, bot_fut).await;
+            res
+        }
+    }.map_err(|e| e.into())
 }
 
 async fn inline_handler(bot: Bot, q: InlineQuery) -> Result<(), Box<dyn Error + Send + Sync>> {

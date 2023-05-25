@@ -10,6 +10,7 @@ services:
       - GOOGLE_MAPS_API_KEY
       - RUST_LOG
       - CACHE_TIME
+      - WEBHOOK_URL
     expose:
       - 8080
     labels:
