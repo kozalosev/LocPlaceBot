@@ -1,12 +1,10 @@
 mod loc;
+mod metrics;
 
 use std::env::VarError;
 use std::error::Error;
 use std::net::SocketAddr;
-use axum::routing::get;
-use axum_prometheus::PrometheusMetricLayer;
 use once_cell::sync::Lazy;
-use prometheus::{Counter, Encoder, Opts, TextEncoder};
 use regex::Regex;
 use reqwest::Url;
 use teloxide::prelude::*;
@@ -17,6 +15,12 @@ use teloxide::update_listeners::{
     UpdateListener
 };
 use crate::loc::{Location, LocFinder};
+use crate::metrics::{
+    MESSAGE_COUNTER,
+    INLINE_COUNTER,
+    INLINE_CHOSEN_COUNTER,
+    GOOGLE_API_REQUESTS_COUNTER
+};
 
 const ENV_WEBHOOK_URL: &str = "WEBHOOK_URL";
 
@@ -30,50 +34,10 @@ static COORDS_REGEXP: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?P<latitude>\d{2}
     .expect("Invalid regex!"));
 static FINDER: Lazy<LocFinder> = Lazy::new(|| LocFinder::from_env());
 
-static INLINE_COUNTER: Lazy<Counter> = Lazy::new(|| {
-    let counter_opts = Opts::new("inline_usage_total", "count of inline queries processed by the bot");
-    Counter::with_opts(counter_opts).expect("unable to create the inline counter")
-});
-static INLINE_CHOSEN_COUNTER: Lazy<Counter> = Lazy::new(|| {
-    let counter_opts = Opts::new("inline_chosen_total", "count of inline results chosen by the users");
-    Counter::with_opts(counter_opts).expect("unable to create the inline chosen counter")
-});
-static MESSAGE_COUNTER: Lazy<Counter> = Lazy::new(|| {
-    let counter_opts = Opts::new("message_usage_total", "count of messages processed by the bot");
-    Counter::with_opts(counter_opts).expect("unable to create the message counter")
-});
-static GOOGLE_API_REQUESTS_COUNTER: Lazy<Counter> = Lazy::new(|| {
-    let counter_opts = Opts::new("google_maps_api_requests_total", "count of requests to the Google Maps API");
-    Counter::with_opts(counter_opts).expect("unable to create the Google Maps API requests counter")
-});
-
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     pretty_env_logger::init();
-
-    let prometheus = prometheus::Registry::new();
-    prometheus.register(Box::new(INLINE_COUNTER.clone()))
-        .expect("unable to register the inline counter");
-    prometheus.register(Box::new(INLINE_CHOSEN_COUNTER.clone()))
-        .expect("unable to register the inline chosen counter");
-    prometheus.register(Box::new(MESSAGE_COUNTER.clone()))
-        .expect("unable to register the message counter");
-    prometheus.register(Box::new(GOOGLE_API_REQUESTS_COUNTER.clone()))
-        .expect("unable to register the Google Maps API requests counter");
-
-    let (prometheus_layer, metric_handle) = PrometheusMetricLayer::pair();
-    let metrics_router = axum::Router::new()
-        .route("/metrics", get(|| async move {
-            // Gather the metrics.
-            let mut buffer = vec![];
-            let metrics = prometheus.gather();
-            TextEncoder::new().encode(&metrics, &mut buffer).unwrap();
-            let custom_metrics = String::from_utf8(buffer).unwrap();
-
-            format!("{}\n{}", metric_handle.render(), custom_metrics);
-        }))
-        .layer(prometheus_layer);
 
     let bot = Bot::from_env();
     let handler = dptree::entry()
@@ -88,6 +52,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         _ => Err("invalid webhook URL!")?
     };
     let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
+    let metrics_router = metrics::init();
     match webhook_url {
         Some(url) => {
             let (mut listener, stop_flag, bot_router) = axum_to_router(bot, Options::new(addr, url)).await?;
