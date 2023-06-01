@@ -4,18 +4,13 @@ mod metrics;
 use std::env::VarError;
 use std::net::SocketAddr;
 use axum::Router;
-use futures::stream::TryStreamExt;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use reqwest::Url;
 use teloxide::prelude::*;
 use teloxide::types::{InlineQueryResult, InlineQueryResultLocation, Me};
 use teloxide::types::ParseMode::MarkdownV2;
-use teloxide::update_listeners::{
-    webhooks::{axum_to_router, Options},
-    UpdateListener,
-    AsUpdateStream
-};
+use teloxide::update_listeners::webhooks::{axum_to_router, Options};
 use crate::loc::{Location, LocFinder};
 use crate::metrics::{
     MESSAGE_COUNTER,
@@ -36,14 +31,12 @@ static COORDS_REGEXP: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?P<latitude>\d{2}
     .expect("Invalid regex!"));
 static FINDER: Lazy<LocFinder> = Lazy::new(|| LocFinder::from_env());
 
-static BOT: Lazy<Bot> = Lazy::new(|| Bot::from_env());
-
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     pretty_env_logger::init();
 
-    let bot = (*BOT).clone();
+    let bot = Bot::from_env();
     let handler = dptree::entry()
         .branch(Update::filter_inline_query().endpoint(inline_handler))
         .branch(Update::filter_message().endpoint(message_handler))
@@ -61,10 +54,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(url) => {
             log::info!("Setting the webhook: {url}");
 
-            let (mut listener, stop_flag, bot_router) = axum_to_router(bot.clone(), Options::new(addr, url)).await?;
-            let stop_token = listener.stop_token();
+            let (listener, stop_flag, bot_router) = axum_to_router(bot.clone(), Options::new(addr, url)).await?;
 
-            tokio::spawn(async move {
+            let error_handler = LoggingErrorHandler::with_custom_text("An error from the update listener");
+            let mut dispatcher = Dispatcher::builder(bot, handler).build();
+            let bot_fut = dispatcher.dispatch_with_listener(listener, error_handler);
+
+            let srv = tokio::spawn(async move {
                 axum::Server::bind(&addr)
                     .serve(Router::new()
                         .merge(metrics_router)
@@ -72,30 +68,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .into_make_service())
                     .with_graceful_shutdown(stop_flag)
                     .await
-                    .map_err(|err| {
-                        stop_token.stop();
-                        err
-                    })
                 }
             );
 
-            let (h, b) = (&handler, &(*BOT));
-            listener.as_stream().try_for_each_concurrent(100, |upd: Update| async move {
-                let me = b.get_me().await.expect("getMe failed");
-                h.dispatch(dptree::deps![(*b).clone(), upd, me]).await;
-                Ok(())
-            }).await.map_err(|e| e.into())
+            let (res, _) = futures::join!(srv, bot_fut);
+            res?.map_err(|e| e.into()).into()
         }
         None => {
             log::info!("Polling dispatcher is activating...");
 
-            let mut bot_fut = Dispatcher::builder(bot.clone(), handler)
+            let mut dispatcher = Dispatcher::builder(bot, handler)
                 .enable_ctrlc_handler()
                 .build();
-            let bot_fut = bot_fut.dispatch();
+            let bot_fut = dispatcher.dispatch();
+
             let srv = axum::Server::bind(&addr)
                 .serve(metrics_router.into_make_service());
-            let (res, _) = futures::future::join(srv, bot_fut).await;
+
+            let (res, _) = futures::join!(srv, bot_fut);
             res.map_err(|e| e.into())
         }
     }
