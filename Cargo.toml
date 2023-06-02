@@ -20,3 +20,5 @@ hyper = "1.0.0-rc.3"
 futures = "0.3.28"
 prometheus = "0.13.3"
 uuid = { version = "1.3.3", features = ["v4", "fast-rng"] }
+strum = "0.24.1"
+strum_macros = "0.24.3"

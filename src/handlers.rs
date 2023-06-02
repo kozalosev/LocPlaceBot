@@ -3,12 +3,12 @@ use regex::Regex;
 use teloxide::prelude::*;
 use teloxide::types::{InlineQueryResult, InlineQueryResultLocation, Me};
 use teloxide::types::ParseMode::MarkdownV2;
+use crate::config;
 use crate::loc::{Location, LocFinder};
 use crate::metrics::{
     MESSAGE_COUNTER,
     INLINE_COUNTER,
     INLINE_CHOSEN_COUNTER,
-    GOOGLE_API_REQUESTS_COUNTER
 };
 
 type HandlerResult = Result<(), Box<dyn std::error::Error + Send + Sync>>;
@@ -26,6 +26,11 @@ static COORDS_REGEXP: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?P<latitude>\d{2}
 static FINDER: Lazy<LocFinder> = Lazy::new(|| LocFinder::from_env());
 
 pub async fn inline_handler(bot: Bot, q: InlineQuery) -> HandlerResult {
+    if q.query.is_empty() {
+        bot.answer_inline_query(q.id, vec![]).await?;
+        return Ok(());
+    }
+
     log::info!("Got query: {}", q.query);
     INLINE_COUNTER.inc();
 
@@ -39,8 +44,13 @@ pub async fn inline_handler(bot: Bot, q: InlineQuery) -> HandlerResult {
                 log::warn!("no language_code for {}, using the default", q.from.id);
                 String::from("en")
             });
-        GOOGLE_API_REQUESTS_COUNTER.inc();
-        FINDER.find(q.query.as_str(), lang_code.as_str()).await?
+        let addr = q.query.as_str();
+        match *config::GAPI_MODE {
+            config::GoogleAPIMode::Place => FINDER.find_place(addr, lang_code.as_str()).await?,
+            config::GoogleAPIMode::Text => FINDER.find_text(addr, lang_code.as_str()).await?,
+            config::GoogleAPIMode::GeoPlace => FINDER.find(addr, lang_code.as_str()).await?,
+            config::GoogleAPIMode::GeoText => FINDER.find_more(addr, lang_code.as_str()).await?,
+        }
     };
 
     send_locations(bot, q.id, q.from.language_code, locations).await

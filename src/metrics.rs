@@ -15,9 +15,21 @@ pub static MESSAGE_COUNTER: Lazy<Counter> = Lazy::new(|| {
     let counter_opts = Opts::new("message_usage_total", "count of messages processed by the bot");
     Counter::with_opts(counter_opts).expect("unable to create the message counter")
 });
-pub static GOOGLE_API_REQUESTS_COUNTER: Lazy<Counter> = Lazy::new(|| {
-    let counter_opts = Opts::new("google_maps_api_requests_total", "count of requests to the Google Maps API");
-    Counter::with_opts(counter_opts).expect("unable to create the Google Maps API requests counter")
+
+pub static GOOGLE_GEO_REQ_COUNTER: Lazy<Counter> = Lazy::new(|| {
+    let counter_opts = Opts::new("google_maps_api_requests_total", "count of requests to the Google Maps API")
+        .const_label("API", "geocode");
+    Counter::with_opts(counter_opts).expect("unable to create the Google Maps API (geocode) requests counter")
+});
+pub static GOOGLE_PLACES_REQ_COUNTER: Lazy<Counter> = Lazy::new(|| {
+    let counter_opts = Opts::new("google_maps_api_requests_total", "count of requests to the Google Maps API")
+        .const_label("API", "place");
+    Counter::with_opts(counter_opts).expect("unable to create the Google Maps API (place) requests counter")
+});
+pub static GOOGLE_PLACES_TEXT_REQ_COUNTER: Lazy<Counter> = Lazy::new(|| {
+    let counter_opts = Opts::new("google_maps_api_requests_total", "count of requests to the Google Maps API")
+        .const_label("API", "place-text");
+    Counter::with_opts(counter_opts).expect("unable to create the Google Maps API (place, text) requests counter")
 });
 
 pub fn init() -> axum::Router {
@@ -28,13 +40,16 @@ pub fn init() -> axum::Router {
         .expect("unable to register the inline chosen counter");
     prometheus.register(Box::new(MESSAGE_COUNTER.clone()))
         .expect("unable to register the message counter");
-    prometheus.register(Box::new(GOOGLE_API_REQUESTS_COUNTER.clone()))
-        .expect("unable to register the Google Maps API requests counter");
+    prometheus.register(Box::new(GOOGLE_GEO_REQ_COUNTER.clone()))
+        .expect("unable to register the Google Maps API (geocode) requests counter");
+    prometheus.register(Box::new(GOOGLE_PLACES_REQ_COUNTER.clone()))
+        .expect("unable to register the Google Maps API (place) requests counter");
+    prometheus.register(Box::new(GOOGLE_PLACES_TEXT_REQ_COUNTER.clone()))
+        .expect("unable to register the Google Maps API (place, text) requests counter");
 
     let (prometheus_layer, metric_handle) = PrometheusMetricLayer::pair();
     axum::Router::new()
         .route("/metrics", get(|| async move {
-            // Gather the metrics.
             let mut buffer = vec![];
             let metrics = prometheus.gather();
             TextEncoder::new().encode(&metrics, &mut buffer).unwrap();

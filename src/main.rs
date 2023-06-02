@@ -1,6 +1,7 @@
 mod loc;
 mod metrics;
 mod handlers;
+mod config;
 
 use std::env::VarError;
 use std::net::SocketAddr;
@@ -14,6 +15,7 @@ const ENV_WEBHOOK_URL: &str = "WEBHOOK_URL";
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     pretty_env_logger::init();
+    config::init();
 
     let bot = Bot::from_env();
     let handler = dptree::entry()
