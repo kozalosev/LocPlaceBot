@@ -137,7 +137,13 @@ async fn inline_chosen_handler(_: Bot, _: ChosenInlineResult) -> Result<(), Box<
 
 async fn message_handler(bot: Bot, msg: Message, me: Me) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     MESSAGE_COUNTER.inc();
-    let help = format!("Use me via inline queries:\n`@{} Hermitage Russia`", me.username());
+
+    let help = msg.from()
+        .and_then(|u| u.language_code.clone())
+        .filter(|lang_code| lang_code == "ru")
+        .map(|_| format!("Используй меня через режим встроенных запросов:\n`@{} Эрмитаж`", me.username()))
+        .unwrap_or(format!("Use me via inline queries:\n`@{} Statue of Liberty`", me.username()));
+
     let mut answer = bot.send_message(msg.chat.id, help);
     answer.parse_mode = Some(MarkdownV2);
     answer.await?;
