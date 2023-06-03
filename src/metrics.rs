@@ -3,6 +3,10 @@ use axum_prometheus::PrometheusMetricLayer;
 use once_cell::sync::Lazy;
 use prometheus::{Encoder, Opts, TextEncoder};
 
+/// Register additional metrics of our own structs by using this registry instance.
+pub static REGISTRY: Lazy<Registry> = Lazy::new(|| Registry(prometheus::Registry::new()));
+
+// Export special preconstructed counters for Teloxide's handlers.
 pub static INLINE_COUNTER: Lazy<Counter> = Lazy::new(|| {
     Counter::new("inline", Opts::new("inline_usage_total", "count of inline queries processed by the bot"))
 });
@@ -13,30 +17,11 @@ pub static MESSAGE_COUNTER: Lazy<Counter> = Lazy::new(|| {
     Counter::new("message", Opts::new("message_usage_total", "count of messages processed by the bot"))
 });
 
-pub static GOOGLE_GEO_REQ_COUNTER: Lazy<Counter> = Lazy::new(|| {
-    let counter_opts = Opts::new("google_maps_api_requests_total", "count of requests to the Google Maps API")
-        .const_label("API", "geocode");
-    Counter::new("Google Maps API (geocode) requests", counter_opts)
-});
-pub static GOOGLE_PLACES_REQ_COUNTER: Lazy<Counter> = Lazy::new(|| {
-    let counter_opts = Opts::new("google_maps_api_requests_total", "count of requests to the Google Maps API")
-        .const_label("API", "place");
-    Counter::new("Google Maps API (place) requests", counter_opts)
-});
-pub static GOOGLE_PLACES_TEXT_REQ_COUNTER: Lazy<Counter> = Lazy::new(|| {
-    let counter_opts = Opts::new("google_maps_api_requests_total", "count of requests to the Google Maps API")
-        .const_label("API", "place-text");
-    Counter::new("Google Maps API (place, text) requests", counter_opts)
-});
-
 pub fn init() -> axum::Router {
-    let prometheus = Registry(prometheus::Registry::new())
+    let prometheus = REGISTRY
         .register(&*INLINE_COUNTER)
         .register(&*INLINE_CHOSEN_COUNTER)
         .register(&*MESSAGE_COUNTER)
-        .register(&*GOOGLE_GEO_REQ_COUNTER)
-        .register(&*GOOGLE_PLACES_REQ_COUNTER)
-        .register(&*GOOGLE_PLACES_TEXT_REQ_COUNTER)
         .unwrap();
 
     let (prometheus_layer, metric_handle) = PrometheusMetricLayer::pair();
@@ -56,7 +41,7 @@ pub struct Counter {
     inner: prometheus::Counter,
     name: String
 }
-struct Registry(prometheus::Registry);
+pub struct Registry(prometheus::Registry);
 
 impl Counter {
     fn new(name: &str, opts: Opts) -> Counter {
@@ -71,6 +56,15 @@ impl Counter {
 }
 
 impl Registry {
+    /// Register additional counters by our own structs.
+    pub fn register_counter(&self, name: &str, opts: Opts) -> prometheus::Counter {
+        let c = prometheus::Counter::with_opts(opts)
+            .expect(format!("unable to create {name} counter").as_str());
+        self.0.register(Box::new(c.clone()))
+            .expect(format!("unable to register the {name} counter").as_str());
+        c
+    }
+
     fn register(&self, counter: &Counter) -> &Self {
         self.0.register(Box::new(counter.inner.clone()))
             .expect(format!("unable to register the {} counter", counter.name).as_str());

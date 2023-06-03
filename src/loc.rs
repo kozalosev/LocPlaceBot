@@ -1,8 +1,4 @@
-use crate::metrics::{
-    GOOGLE_GEO_REQ_COUNTER,
-    GOOGLE_PLACES_REQ_COUNTER,
-    GOOGLE_PLACES_TEXT_REQ_COUNTER,
-};
+use crate::metrics;
 
 const FINDER_ENV_API_KEY: &str = "GOOGLE_MAPS_API_KEY";
 
@@ -14,7 +10,11 @@ pub struct Location {
 }
 
 pub struct LocFinder {
-    api_key: String
+    api_key: String,
+
+    geocode_req_counter: prometheus::Counter,
+    place_req_counter: prometheus::Counter,
+    text_req_counter: prometheus::Counter,
 }
 
 impl Location {
@@ -37,7 +37,18 @@ impl Location {
 
 impl LocFinder {
     pub fn init(api_key: &str) -> LocFinder {
-        LocFinder { api_key: api_key.to_string() }
+        let base_opts = prometheus::Opts::new("google_maps_api_requests_total", "count of requests to the Google Maps API");
+        let geocode_opts = base_opts.clone().const_label("API", "geocode");
+        let place_opts   = base_opts.clone().const_label("API", "place");
+        let text_opts    = base_opts.clone().const_label("API", "place-text");
+
+        LocFinder {
+            api_key: api_key.to_string(),
+
+            geocode_req_counter: metrics::REGISTRY.register_counter("Google Maps API (geocode) requests", geocode_opts),
+            place_req_counter:   metrics::REGISTRY.register_counter("Google Maps API (place) requests", place_opts),
+            text_req_counter:    metrics::REGISTRY.register_counter("Google Maps API (place, text) requests", text_opts),
+        }
     }
 
     pub fn from_env() -> LocFinder {
@@ -62,7 +73,7 @@ impl LocFinder {
     }
 
     pub async fn find_geo(&self, address: &str, lang_code: &str) -> Result<Vec<Location>, reqwest::Error> {
-        GOOGLE_GEO_REQ_COUNTER.inc();
+        self.geocode_req_counter.inc();
 
         let url = format!("https://maps.googleapis.com/maps/api/geocode/json?key={}&address={}&language={}&region={}",
                           self.api_key, address, lang_code, lang_code);
@@ -77,7 +88,7 @@ impl LocFinder {
     }
 
     pub async fn find_place(&self, address: &str, lang_code: &str) -> Result<Vec<Location>, reqwest::Error> {
-        GOOGLE_PLACES_REQ_COUNTER.inc();
+        self.place_req_counter.inc();
 
         let url = format!("https://maps.googleapis.com/maps/api/place/findplacefromtext/json?key={}&input={}&inputtype=textquery&language={}&fields=formatted_address,geometry,name",
                           self.api_key, address, lang_code);
@@ -93,7 +104,7 @@ impl LocFinder {
     }
 
     pub async fn find_text(&self, address: &str, lang_code: &str) -> Result<Vec<Location>, reqwest::Error> {
-        GOOGLE_PLACES_TEXT_REQ_COUNTER.inc();
+        self.text_req_counter.inc();
 
         let url = format!("https://maps.googleapis.com/maps/api/place/textsearch/json?key={}&query={}&language={}&region={}",
                           self.api_key, address, lang_code, lang_code);
