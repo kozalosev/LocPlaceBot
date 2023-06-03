@@ -58,16 +58,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         None => {
             log::info!("The polling dispatcher is activating...");
 
-            let mut dispatcher = Dispatcher::builder(bot, handler)
-                .enable_ctrlc_handler()
-                .build();
-            let bot_fut = dispatcher.dispatch();
+            let bot_fut = tokio::spawn(async move {
+                Dispatcher::builder(bot, handler)
+                    .enable_ctrlc_handler()
+                    .build()
+                    .dispatch()
+                    .await
+            });
 
-            let srv = axum::Server::bind(&addr)
-                .serve(metrics_router.into_make_service());
+            let srv = tokio::spawn(async move {
+                axum::Server::bind(&addr)
+                    .serve(metrics_router.into_make_service())
+                    .with_graceful_shutdown(async {
+                        tokio::signal::ctrl_c()
+                            .await
+                            .expect("failed to install CTRL+C signal handler");
+                        log::info!("Shutdown of the metrics server")
+                    })
+                    .await
+            });
 
             let (res, _) = futures::join!(srv, bot_fut);
-            res.map_err(|e| e.into())
+            res?.map_err(|e| e.into()).into()
         }
     }
 }
