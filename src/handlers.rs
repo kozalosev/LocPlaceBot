@@ -21,7 +21,7 @@ static CACHE_TIME: Lazy<Option<u32>> = Lazy::new(|| std::env::var("CACHE_TIME")
     .map(|v| { v.parse().ok() })
     .flatten()
 );
-static COORDS_REGEXP: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?P<latitude>\d{2}(\.\d{1,6})?),? (?P<longitude>\d{2}(\.\d{1,6})?)")
+static COORDS_REGEXP: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?P<latitude>\d{1,2}(\.\d+)?),? (?P<longitude>\d{1,3}(\.\d+)?)")
     .expect("Invalid regex!"));
 static FINDER: Lazy<LocFinder> = Lazy::new(|| LocFinder::from_env());
 
