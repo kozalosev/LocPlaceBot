@@ -1,3 +1,5 @@
+extern crate core;
+
 mod loc;
 mod metrics;
 mod handlers;
@@ -20,8 +22,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let bot = Bot::from_env();
     let handler = dptree::entry()
         .branch(Update::filter_inline_query().endpoint(handlers::inline_handler))
-        .branch(Update::filter_message().endpoint(handlers::message_handler))
-        .branch(Update::filter_chosen_inline_result().endpoint(handlers::inline_chosen_handler));
+        .branch(Update::filter_chosen_inline_result().endpoint(handlers::inline_chosen_handler))
+        .branch(Update::filter_message().filter_command::<handlers::Command>().endpoint(handlers::command_handler))
+        .branch(Update::filter_message().endpoint(handlers::message_handler));
 
     let webhook_url: Option<Url> = match std::env::var(ENV_WEBHOOK_URL) {
         Ok(env_url) if env_url.len() > 0 => Some(env_url.parse()?),

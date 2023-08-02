@@ -16,12 +16,24 @@ pub static INLINE_CHOSEN_COUNTER: Lazy<Counter> = Lazy::new(|| {
 pub static MESSAGE_COUNTER: Lazy<Counter> = Lazy::new(|| {
     Counter::new("message", Opts::new("message_usage_total", "count of messages processed by the bot"))
 });
+pub static CMD_START_COUNTER: Lazy<Counter> = Lazy::new(|| {
+    Counter::new("command_start", Opts::new("command_start_usage_total", "count of /start invocations"))
+});
+pub static CMD_HELP_COUNTER: Lazy<Counter> = Lazy::new(|| {
+    Counter::new("command_help", Opts::new("command_help_usage_total", "count of /help invocations"))
+});
+pub static CMD_LOC_COUNTER: Lazy<Counter> = Lazy::new(|| {
+    Counter::new("command_loc", Opts::new("command_loc_usage_total", "count of /loc invocations"))
+});
 
 pub fn init() -> axum::Router {
     let prometheus = REGISTRY
         .register(&*INLINE_COUNTER)
         .register(&*INLINE_CHOSEN_COUNTER)
         .register(&*MESSAGE_COUNTER)
+        .register(&*CMD_START_COUNTER)
+        .register(&*CMD_HELP_COUNTER)
+        .register(&*CMD_LOC_COUNTER)
         .unwrap();
 
     let (prometheus_layer, metric_handle) = PrometheusMetricLayer::pair();

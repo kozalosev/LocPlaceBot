@@ -11,6 +11,7 @@ services:
       - RUST_LOG
       - CACHE_TIME
       - GAPI_MODE
+      - MSG_LOC_LIMIT
       - WEBHOOK_URL
     expose:
       - 8080
