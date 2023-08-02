@@ -28,7 +28,7 @@ static MSG_LOC_LIMIT: Lazy<usize> = Lazy::new(|| std::env::var("MSG_LOC_LIMIT")
     .unwrap_or(1)
 );
 
-static COORDS_REGEXP: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?P<latitude>\d{1,2}(\.\d+)?),? (?P<longitude>\d{1,3}(\.\d+)?)")
+static COORDS_REGEXP: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?P<latitude>-?\d{1,2}(\.\d+)?),? (?P<longitude>-?\d{1,3}(\.\d+)?)")
     .expect("Invalid regex!"));
 static FINDER: Lazy<LocFinder> = Lazy::new(|| LocFinder::from_env());
 
