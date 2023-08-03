@@ -15,6 +15,7 @@ use teloxide::types::ParseMode::MarkdownV2;
 use teloxide::utils::command::BotCommands;
 
 #[derive(BotCommands, Clone)]
+#[command(rename_rule = "lowercase")]
 pub enum Command {
     Help,
     Start,
