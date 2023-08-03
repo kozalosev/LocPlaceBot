@@ -1,0 +1,9 @@
+title:
+  greeting: "Hello"
+  address:
+    point: "Point on the map"
+  address-list:
+    has-data: "Here is a list of addresses I found:"
+    empty: "Nothing was found :("
+error:
+  old-message: "The message is too old :("

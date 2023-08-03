@@ -22,3 +22,4 @@ prometheus = "0.13.3"
 uuid = { version = "1.3.3", features = ["v4", "fast-rng"] }
 strum = "0.24.1"
 strum_macros = "0.24.3"
+rust-i18n = "2.1.0"

@@ -15,7 +15,8 @@ RUN adduser \
     --uid "${UID}" \
     "${USER}"
 
-COPY src/* src/
+COPY src/ src/
+COPY locales/ locales/
 COPY Cargo.* ./
 
 ENV RUSTFLAGS='-C target-feature=-crt-static'
@@ -35,6 +36,9 @@ ARG TELOXIDE_TOKEN
 ARG GOOGLE_MAPS_API_KEY
 ARG RUST_LOG
 ARG CACHE_TIME
+ARG GAPI_MODE
+ARG MSG_LOC_LIMIT
+ARG WEBHOOK_URL
 ENTRYPOINT [ "/usr/local/bin/locPlaceBot" ]
 
 LABEL org.opencontainers.image.source=https://github.com/kozalosev/LocPlaceBot
