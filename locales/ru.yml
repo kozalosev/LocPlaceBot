@@ -1,0 +1,9 @@
+title:
+  greeting: "Приветствую"
+  address:
+    point: "Точка на карте"
+  address-list:
+    has-data: "Список адресов, которые я нашёл:"
+    empty: "Ничего не удалось найти :("
+error:
+  old-message: "Сообщение слишком старое :("

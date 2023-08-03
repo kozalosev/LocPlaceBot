@@ -16,6 +16,7 @@ RUN adduser \
     "${USER}"
 
 COPY src/ src/
+COPY locales/ locales/
 COPY Cargo.* ./
 
 ENV RUSTFLAGS='-C target-feature=-crt-static'
