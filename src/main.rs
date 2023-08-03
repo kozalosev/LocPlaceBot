@@ -4,6 +4,8 @@ mod loc;
 mod metrics;
 mod handlers;
 mod config;
+mod help;
+mod utils;
 
 use std::env::VarError;
 use std::net::SocketAddr;
