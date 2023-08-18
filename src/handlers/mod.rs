@@ -3,9 +3,8 @@ mod senders;
 use regex::Regex;
 use once_cell::sync::Lazy;
 use rust_i18n::t;
-use crate::config;
 use crate::help;
-use crate::loc::{Location, LocFinder};
+use crate::loc::{Location, SearchChain, google::GoogleLocFinder};
 use crate::metrics::{MESSAGE_COUNTER, INLINE_COUNTER, INLINE_CHOSEN_COUNTER, CMD_HELP_COUNTER, CMD_START_COUNTER, CMD_LOC_COUNTER};
 use crate::utils::ensure_lang_code;
 use teloxide::prelude::*;
@@ -13,6 +12,8 @@ use teloxide::dispatching::dialogue::GetChatId;
 use teloxide::types::Me;
 use teloxide::types::ParseMode::MarkdownV2;
 use teloxide::utils::command::BotCommands;
+
+pub use crate::loc::google::preload_env_vars;
 
 #[derive(BotCommands, Clone)]
 #[command(rename_rule = "lowercase")]
@@ -26,7 +27,11 @@ pub type HandlerResult = Result<(), Box<dyn std::error::Error + Send + Sync>>;
 
 static COORDS_REGEXP: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?P<latitude>-?\d{1,2}(\.\d+)?),? (?P<longitude>-?\d{1,3}(\.\d+)?)")
     .expect("Invalid regex!"));
-static FINDER: Lazy<LocFinder> = Lazy::new(|| LocFinder::from_env());
+static FINDER: Lazy<SearchChain> = Lazy::new(|| {
+        SearchChain::new(vec![
+            Box::new(GoogleLocFinder::from_env())
+        ])
+});
 
 pub async fn inline_handler(bot: Bot, q: InlineQuery) -> HandlerResult {
     if q.query.is_empty() {
@@ -128,12 +133,7 @@ async fn resolve_locations(query: String, lang_code: &str) -> Result<Vec<Locatio
         let long: f64 = coords["longitude"].parse()?;
         vec![Location::new(lat, long)]
     } else {
-        match *config::GAPI_MODE {
-            config::GoogleAPIMode::Place => FINDER.find_place(query, lang_code).await?,
-            config::GoogleAPIMode::Text => FINDER.find_text(query, lang_code).await?,
-            config::GoogleAPIMode::GeoPlace => FINDER.find(query, lang_code).await?,
-            config::GoogleAPIMode::GeoText => FINDER.find_more(query, lang_code).await?,
-        }
+        FINDER.find(query, lang_code).await
     };
     Ok(locations)
 }
