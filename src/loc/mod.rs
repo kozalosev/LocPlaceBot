@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use async_trait::async_trait;
 
 pub mod google;
+pub mod osm;
 
 #[cfg(test)]
 mod test;
@@ -31,7 +32,7 @@ impl Location {
     }
 }
 
-pub type LocResult = Result<Vec<Location>, reqwest::Error>;
+pub type LocResult = Result<Vec<Location>, anyhow::Error>;
 pub type DynLocFinder = Box<dyn LocFinder + Sync + Send>;
 
 #[async_trait]

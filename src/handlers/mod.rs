@@ -4,7 +4,7 @@ use regex::Regex;
 use once_cell::sync::Lazy;
 use rust_i18n::t;
 use crate::help;
-use crate::loc::{Location, SearchChain, google::GoogleLocFinder};
+use crate::loc::{Location, SearchChain, google::GoogleLocFinder, osm::OpenStreetMapLocFinder};
 use crate::metrics::{MESSAGE_COUNTER, INLINE_COUNTER, INLINE_CHOSEN_COUNTER, CMD_HELP_COUNTER, CMD_START_COUNTER, CMD_LOC_COUNTER};
 use crate::utils::ensure_lang_code;
 use teloxide::prelude::*;
@@ -29,6 +29,7 @@ static COORDS_REGEXP: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?P<latitude>-?\d{
     .expect("Invalid regex!"));
 static FINDER: Lazy<SearchChain> = Lazy::new(|| {
         SearchChain::new(vec![
+            Box::new(OpenStreetMapLocFinder::new()),
             Box::new(GoogleLocFinder::from_env())
         ])
 });
