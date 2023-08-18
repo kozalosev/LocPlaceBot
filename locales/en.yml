@@ -1,7 +1,7 @@
 title:
   greeting: "Hello"
   address:
-    point: "Point on the map"
+    point: "Point on a map"
   address-list:
     has-data: "Here is a list of addresses I found:"
     empty: "Nothing was found :("
