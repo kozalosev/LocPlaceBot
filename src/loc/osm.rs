@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use reqwest::header::{ACCEPT_LANGUAGE, USER_AGENT};
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
-use http_cache_reqwest::{Cache, CacheMode, CACacheManager, HttpCache, CacheOptions};
+use http_cache_reqwest::{Cache, CacheMode, MokaManager, HttpCache, CacheOptions};
 use super::{LocFinder, LocResult, Location};
 
 pub struct OpenStreetMapLocFinder {
@@ -15,7 +15,7 @@ impl OpenStreetMapLocFinder {
         let client = ClientBuilder::new(client)
             .with(Cache(HttpCache {
                 mode: CacheMode::Default,
-                manager: CACacheManager::default(),
+                manager: MokaManager::default(),
                 options: Some(CacheOptions::default()),
             }))
             .build();
