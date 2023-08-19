@@ -54,6 +54,7 @@ impl SearchChain {
     }
 
     /// Reserved for Yandex Maps or 2GIS providers which may be used for RU locale in the future
+    #[allow(dead_code)]
     pub fn for_lang_code(mut self, lc: &str, mut finders: Vec<DynLocFinder>) -> Self {
         self.regional_finders
             .entry(lc.to_string())

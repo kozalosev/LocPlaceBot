@@ -1092,6 +1092,7 @@ dependencies = [
  "axum",
  "axum-prometheus",
  "futures",
+ "http-cache",
  "http-cache-reqwest",
  "hyper 1.0.0-rc.3",
  "log",
