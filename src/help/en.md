@@ -4,7 +4,7 @@ Just send me either the coordinates as is: `38.8976804, -77.0391101`,
 or the address: `1600 Pennsylvania Avenue NW, Washington, DC 20500, United States`,
 or a textual description: `White House Washington DC`\.
 
-The same is available in inline queries: `@{{bot_name}} Statue of Liberty`
+The same is available via inline queries: `@{{bot_name}} Statue of Liberty`
 
 These commands are supported:
 /help — print a help message

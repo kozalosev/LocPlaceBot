@@ -1,15 +1,32 @@
+use std::str::FromStr;
+use async_trait::async_trait;
+use once_cell::sync::Lazy;
+use strum_macros::EnumString;
+use crate::loc::{Location, LocFinder, LocResult};
 use crate::metrics;
 
 const FINDER_ENV_API_KEY: &str = "GOOGLE_MAPS_API_KEY";
 
-#[derive(Debug)]
-pub struct Location {
-    address: Option<String>,
-    latitude: f64,
-    longitude: f64
+pub static GAPI_MODE: Lazy<GoogleAPIMode> = Lazy::new(|| {
+    let val = std::env::var("GAPI_MODE").expect("GAPI_MODE must be set!");
+    log::info!("GAPI_MODE is {val}");
+    GoogleAPIMode::from_str(val.as_str()).expect("Invalid value of GAPI_MODE")
+});
+
+#[derive(EnumString)]
+pub enum GoogleAPIMode {
+    Place,      // Find Place request
+    Text,       // Text Search request
+    GeoPlace,   // Geocoding request first, Find Place if ZERO_RESULTS
+    GeoText,    // Geocoding request first, Text Search if ZERO_RESULTS
 }
 
-pub struct LocFinder {
+/// Load and check required parameters at startup
+pub fn preload_env_vars() {
+    let _ = *GAPI_MODE;
+}
+
+pub struct GoogleLocFinder {
     api_key: String,
 
     geocode_req_counter: prometheus::Counter,
@@ -17,32 +34,14 @@ pub struct LocFinder {
     text_req_counter: prometheus::Counter,
 }
 
-impl Location {
-    pub fn new(latitude: f64, longitude: f64) -> Location {
-        Location { address: None, latitude, longitude }
-    }
-
-    pub fn address(&self) -> Option<String> {
-        self.address.clone()
-    }
-
-    pub fn latitude(&self) -> f64 {
-        self.latitude
-    }
-
-    pub fn longitude(&self) -> f64 {
-        self.longitude
-    }
-}
-
-impl LocFinder {
-    pub fn init(api_key: &str) -> LocFinder {
+impl GoogleLocFinder {
+    pub fn init(api_key: &str) -> GoogleLocFinder {
         let base_opts = prometheus::Opts::new("google_maps_api_requests_total", "count of requests to the Google Maps API");
         let geocode_opts = base_opts.clone().const_label("API", "geocode");
         let place_opts   = base_opts.clone().const_label("API", "place");
         let text_opts    = base_opts.clone().const_label("API", "place-text");
 
-        LocFinder {
+        GoogleLocFinder {
             api_key: api_key.to_string(),
 
             geocode_req_counter: metrics::REGISTRY.register_counter("Google Maps API (geocode) requests", geocode_opts),
@@ -51,12 +50,12 @@ impl LocFinder {
         }
     }
 
-    pub fn from_env() -> LocFinder {
+    pub fn from_env() -> GoogleLocFinder {
         let api_key = std::env::var(FINDER_ENV_API_KEY).expect("Google Maps API key is required!");
         Self::init(api_key.as_str())
     }
 
-    pub async fn find(&self, address: &str, lang_code: &str) -> Result<Vec<Location>, reqwest::Error> {
+    pub async fn find(&self, address: &str, lang_code: &str) -> LocResult {
         let mut results = self.find_geo(address, lang_code).await?;
         if results.is_empty() {
             results = self.find_place(address, lang_code).await?;
@@ -64,7 +63,7 @@ impl LocFinder {
         Ok(results)
     }
 
-    pub async fn find_more(&self, address: &str, lang_code: &str) -> Result<Vec<Location>, reqwest::Error> {
+    pub async fn find_more(&self, address: &str, lang_code: &str) -> LocResult {
         let mut results = self.find_geo(address, lang_code).await?;
         if results.is_empty() {
             results = self.find_text(address, lang_code).await?;
@@ -72,7 +71,7 @@ impl LocFinder {
         Ok(results)
     }
 
-    pub async fn find_geo(&self, address: &str, lang_code: &str) -> Result<Vec<Location>, reqwest::Error> {
+    pub async fn find_geo(&self, address: &str, lang_code: &str) -> LocResult {
         self.geocode_req_counter.inc();
 
         let url = format!("https://maps.googleapis.com/maps/api/geocode/json?key={}&address={}&language={}&region={}",
@@ -87,7 +86,7 @@ impl LocFinder {
         Ok(results)
     }
 
-    pub async fn find_place(&self, address: &str, lang_code: &str) -> Result<Vec<Location>, reqwest::Error> {
+    pub async fn find_place(&self, address: &str, lang_code: &str) -> LocResult {
         self.place_req_counter.inc();
 
         let url = format!("https://maps.googleapis.com/maps/api/place/findplacefromtext/json?key={}&input={}&inputtype=textquery&language={}&fields=formatted_address,geometry,name",
@@ -103,7 +102,7 @@ impl LocFinder {
         Ok(results)
     }
 
-    pub async fn find_text(&self, address: &str, lang_code: &str) -> Result<Vec<Location>, reqwest::Error> {
+    pub async fn find_text(&self, address: &str, lang_code: &str) -> LocResult {
         self.text_req_counter.inc();
 
         let url = format!("https://maps.googleapis.com/maps/api/place/textsearch/json?key={}&query={}&language={}&region={}",
@@ -117,6 +116,18 @@ impl LocFinder {
             .collect();
 
         Ok(results)
+    }
+}
+
+#[async_trait]
+impl LocFinder for GoogleLocFinder {
+    async fn find(&self, query: &str, lang_code: &str) -> LocResult {
+        match *GAPI_MODE {
+            GoogleAPIMode::Place => self.find_place(query, lang_code).await,
+            GoogleAPIMode::Text => self.find_text(query, lang_code).await,
+            GoogleAPIMode::GeoPlace => self.find(query, lang_code).await,
+            GoogleAPIMode::GeoText => self.find_more(query, lang_code).await,
+        }
     }
 }
 

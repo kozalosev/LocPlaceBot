@@ -3,7 +3,6 @@ extern crate core;
 mod loc;
 mod metrics;
 mod handlers;
-mod config;
 mod help;
 mod utils;
 
@@ -22,7 +21,7 @@ i18n!();    // load localizations with default parameters
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     pretty_env_logger::init();
-    config::init();
+    handlers::preload_env_vars();
 
     let bot = Bot::from_env();
     let handler = dptree::entry()

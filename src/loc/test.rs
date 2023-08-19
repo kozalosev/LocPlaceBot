@@ -1,0 +1,51 @@
+use std::collections::HashMap;
+use async_trait::async_trait;
+use super::SearchChain;
+use super::Location;
+use super::LocResult;
+use super::LocFinder;
+
+#[tokio::test]
+async fn test_search_chain() {
+    let global_address = "123456 Global Test Land";
+    let ru_address = "123456 Russia Test Land";
+
+    let empty_finder = boxed_finder(Vec::default());
+    let global_finder = boxed_finder(vec![location(global_address)]);
+    let ru_finder = boxed_finder(vec![location(ru_address)]);
+
+    let chain = SearchChain::new(vec![empty_finder, global_finder])
+        .for_lang_code("ru", vec![ru_finder]);
+
+    for test_data in HashMap::from([("en", global_address), ("ru", ru_address)]) {
+        let result = chain.find("", test_data.0).await;
+        assert_eq!(result.len(), 1);
+        let addr = result.get(0).unwrap()
+            .address.clone()
+            .expect("address must be present in the stub data!");
+        assert_eq!(addr, test_data.1.to_string());
+    }
+}
+
+fn boxed_finder(result: Vec<Location>) -> Box<StubLocFinder> {
+    Box::new(StubLocFinder { result })
+}
+
+fn location(address: &str) -> Location {
+    Location {
+        address: Some(address.to_string()),
+        latitude: 100.0,
+        longitude: 50.0,
+    }
+}
+
+struct StubLocFinder {
+    result: Vec<Location>
+}
+
+#[async_trait]
+impl LocFinder for StubLocFinder {
+    async fn find(&self, _: &str, _: &str) -> LocResult {
+        Ok(self.result.clone())
+    }
+}
