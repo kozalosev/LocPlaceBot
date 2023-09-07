@@ -4,7 +4,7 @@ use regex::Regex;
 use once_cell::sync::Lazy;
 use rust_i18n::t;
 use crate::help;
-use crate::loc::{Location, SearchChain, google::GoogleLocFinder, osm::OpenStreetMapLocFinder};
+use crate::loc::{Location, SearchChain, google, yandex, osm};
 use crate::metrics::{MESSAGE_COUNTER, INLINE_COUNTER, INLINE_CHOSEN_COUNTER, CMD_HELP_COUNTER, CMD_START_COUNTER, CMD_LOC_COUNTER};
 use crate::utils::ensure_lang_code;
 use teloxide::prelude::*;
@@ -12,8 +12,6 @@ use teloxide::dispatching::dialogue::GetChatId;
 use teloxide::types::Me;
 use teloxide::types::ParseMode::MarkdownV2;
 use teloxide::utils::command::BotCommands;
-
-pub use crate::loc::google::preload_env_vars;
 
 #[derive(BotCommands, Clone)]
 #[command(rename_rule = "lowercase")]
@@ -29,10 +27,17 @@ static COORDS_REGEXP: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?P<latitude>-?\d{
     .expect("Invalid regex!"));
 static FINDER: Lazy<SearchChain> = Lazy::new(|| {
         SearchChain::new(vec![
-            Box::new(OpenStreetMapLocFinder::new()),
-            Box::new(GoogleLocFinder::from_env())
+            Box::new(osm::OpenStreetMapLocFinder::new()),
+            Box::new(google::GoogleLocFinder::from_env())
+        ]).for_lang_code("ru", vec![
+            Box::new(yandex::YandexLocFinder::from_env())
         ])
 });
+
+pub fn preload_env_vars() {
+    google::preload_env_vars();
+    yandex::preload_env_vars();
+}
 
 pub async fn inline_handler(bot: Bot, q: InlineQuery) -> HandlerResult {
     if q.query.is_empty() {
@@ -40,7 +45,7 @@ pub async fn inline_handler(bot: Bot, q: InlineQuery) -> HandlerResult {
         return Ok(());
     }
 
-    log::info!("Got query: {}", q.query);
+    log::info!("Got inline query: {}", q.query);
     INLINE_COUNTER.inc();
 
     let lang_code = &ensure_lang_code(q.from.id, q.from.language_code.clone());
@@ -122,6 +127,7 @@ async fn cmd_loc_handler(bot: Bot, msg: Message) -> HandlerResult {
 async fn resolve_locations_for_message(msg: &Message) -> Result<Vec<Location>, Box<dyn std::error::Error + Send + Sync>> {
     let text = msg.text().ok_or("no text")?.to_string();
     let from = msg.from().ok_or("no from")?;
+    log::info!("Got message query: {}", text);
 
     let lang_code = &ensure_lang_code(from.id, from.language_code.clone());
     resolve_locations(text, lang_code).await
