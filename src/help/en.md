@@ -8,4 +8,9 @@ The same is available via inline queries: `@{{bot_name}} Statue of Liberty`
 
 These commands are supported:
 /help — print a help message
-/loc — use this command to search for a place in a group chat since the bot has no access to usual messages
+/loc — use this command to search for a place in a group chat since the bot has no access to usual messages\.
+
+This bot uses information from the following data sources:
+— [OpenStreetMap Nominatim](https://nominatim.openstreetmap.org/)
+— [Yandex Maps](https://yandex.ru/maps/)
+— [Google Maps](https://www.google.com/maps)
