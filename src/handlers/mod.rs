@@ -96,6 +96,10 @@ pub async fn message_handler(bot: Bot, msg: Message) -> HandlerResult {
 }
 
 pub async fn callback_handler(bot: Bot, q: CallbackQuery) -> HandlerResult {
+    log::info!("Got callback query for {}: {}",
+        q.from.id,
+        q.data.clone().unwrap_or("<null>".to_string()));
+
     let mut answer = bot.answer_callback_query(q.clone().id);
     if let (Some(chat_id), Some(data)) = (q.chat_id(), q.data) {
         let parts: Vec<&str> = data.split(",").collect();
@@ -105,7 +109,6 @@ pub async fn callback_handler(bot: Bot, q: CallbackQuery) -> HandlerResult {
         let latitude: f64 = parts.get(0).unwrap().parse()?;
         let longitude: f64 = parts.get(1).unwrap().parse()?;
         bot.send_location(chat_id, latitude, longitude).await?;
-
     } else {
         let lang_code = q.from.language_code.unwrap_or(String::default());
         answer.text = Some(t!("error.old-message", locale = lang_code.as_str()));
