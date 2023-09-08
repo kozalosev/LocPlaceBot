@@ -43,7 +43,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let metrics_router = metrics::init();
     match webhook_url {
         Some(url) => {
-            log::info!("Setting the webhook: {url}");
+            log::info!("Setting a webhook: {url}");
 
             let (listener, stop_flag, bot_router) = axum_to_router(bot.clone(), Options::new(addr, url)).await?;
 
