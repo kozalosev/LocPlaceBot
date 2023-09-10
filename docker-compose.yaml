@@ -8,9 +8,12 @@ services:
     environment:
       - TELOXIDE_TOKEN
       - GOOGLE_MAPS_API_KEY
+      - YANDEX_MAPS_GEOCODER_API_KEY
+      - YANDEX_MAPS_PLACES_API_KEY
       - RUST_LOG
       - CACHE_TIME
       - GAPI_MODE
+      - YAPI_MODE
       - MSG_LOC_LIMIT
       - WEBHOOK_URL
     expose:

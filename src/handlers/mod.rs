@@ -45,7 +45,7 @@ pub async fn inline_handler(bot: Bot, q: InlineQuery) -> HandlerResult {
         return Ok(());
     }
 
-    log::info!("Got inline query: {}", q.query);
+    log::info!("Got an inline query: {}", q.query);
     INLINE_COUNTER.inc();
 
     let lang_code = &ensure_lang_code(q.from.id, q.from.language_code.clone());
@@ -96,6 +96,10 @@ pub async fn message_handler(bot: Bot, msg: Message) -> HandlerResult {
 }
 
 pub async fn callback_handler(bot: Bot, q: CallbackQuery) -> HandlerResult {
+    log::info!("Got a callback query for {}: {}",
+        q.from.id,
+        q.data.clone().unwrap_or("<null>".to_string()));
+
     let mut answer = bot.answer_callback_query(q.clone().id);
     if let (Some(chat_id), Some(data)) = (q.chat_id(), q.data) {
         let parts: Vec<&str> = data.split(",").collect();
@@ -105,7 +109,6 @@ pub async fn callback_handler(bot: Bot, q: CallbackQuery) -> HandlerResult {
         let latitude: f64 = parts.get(0).unwrap().parse()?;
         let longitude: f64 = parts.get(1).unwrap().parse()?;
         bot.send_location(chat_id, latitude, longitude).await?;
-
     } else {
         let lang_code = q.from.language_code.unwrap_or(String::default());
         answer.text = Some(t!("error.old-message", locale = lang_code.as_str()));
@@ -127,7 +130,7 @@ async fn cmd_loc_handler(bot: Bot, msg: Message) -> HandlerResult {
 async fn resolve_locations_for_message(msg: &Message) -> Result<Vec<Location>, Box<dyn std::error::Error + Send + Sync>> {
     let text = msg.text().ok_or("no text")?.to_string();
     let from = msg.from().ok_or("no from")?;
-    log::info!("Got message query: {}", text);
+    log::info!("Got a message query: {}", text);
 
     let lang_code = &ensure_lang_code(from.id, from.language_code.clone());
     resolve_locations(text, lang_code).await

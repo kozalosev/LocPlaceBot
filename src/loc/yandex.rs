@@ -2,8 +2,10 @@ use std::str::FromStr;
 use anyhow::anyhow;
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
+use reqwest_middleware::ClientWithMiddleware;
 use strum_macros::EnumString;
-use crate::loc::{Location, LocFinder, LocResult};
+use super::cache::WithCachedResponseCounters;
+use super::{cache, Location, LocFinder, LocResult};
 use crate::metrics;
 
 const GEOCODER_ENV_API_KEY: &str = "YANDEX_MAPS_GEOCODER_API_KEY";
@@ -28,11 +30,15 @@ pub fn preload_env_vars() {
 }
 
 pub struct YandexLocFinder {
+    client: ClientWithMiddleware,
+
     geocode_api_key: String,
     places_api_key: Option<String>,
 
     geocode_req_counter: prometheus::Counter,
     place_req_counter: prometheus::Counter,
+    cached_resp_counter: prometheus::Counter,
+    fetched_resp_counter: prometheus::Counter,
 }
 
 impl YandexLocFinder {
@@ -41,12 +47,20 @@ impl YandexLocFinder {
         let geocode_opts = base_opts.clone().const_label("API", "geocode");
         let place_opts   = base_opts.clone().const_label("API", "place");
 
+        let resp_opts = prometheus::Opts::new("yandex_maps_api_responses_total", "count of responses from the Yandex Maps API split by the source");
+        let from_cache_opts = resp_opts.clone().const_label("source", "cache");
+        let from_remote_opts = resp_opts.const_label("source", "remote");
+
         YandexLocFinder {
+            client: cache::caching_client(),
+
             geocode_api_key,
             places_api_key,
 
-            geocode_req_counter: metrics::REGISTRY.register_counter("Yandex Maps API (geocode) requests", geocode_opts),
-            place_req_counter:   metrics::REGISTRY.register_counter("Yandex Maps API (place) requests", place_opts),
+            geocode_req_counter:  metrics::REGISTRY.register_counter("Yandex Maps API (geocode) requests", geocode_opts),
+            place_req_counter:    metrics::REGISTRY.register_counter("Yandex Maps API (place) requests", place_opts),
+            cached_resp_counter:  metrics::REGISTRY.register_counter("Yandex Maps API requests", from_cache_opts),
+            fetched_resp_counter: metrics::REGISTRY.register_counter("Yandex Maps API requests", from_remote_opts),
         }
     }
 
@@ -75,12 +89,14 @@ impl YandexLocFinder {
 
         let url = format!("https://geocode-maps.yandex.ru/1.x?apikey={}&lang={}&geocode={}&format=json",
                           self.geocode_api_key, lang_code, address);
-        let resp = reqwest::get(url).await?.json::<serde_json::Value>().await?;
+        let resp = self.client.get(url).send().await?;
+        self.inc_resp_counter(&resp);
 
-        log::info!("response from Yandex Maps Geocoder: {}", resp);
+        let json = resp.json::<serde_json::Value>().await?;
+        log::info!("response from Yandex Maps Geocoder: {json}");
 
         let empty: Vec<serde_json::Value> = Vec::new();
-        let result = resp["response"]["GeoObjectCollection"]["featureMember"]
+        let result = json["response"]["GeoObjectCollection"]["featureMember"]
             .as_array()
             .unwrap_or(&empty)
             .iter()
@@ -97,12 +113,14 @@ impl YandexLocFinder {
 
         let url = format!("https://search-maps.yandex.ru/v1/?apikey={}&lang={}&text={}",
                           api_key, lang_code, address);
-        let resp = reqwest::get(url).await?.json::<serde_json::Value>().await?;
+        let resp = self.client.get(url).send().await?;
+        self.inc_resp_counter(&resp);
 
-        log::info!("response from Yandex Maps Places API: {}", resp);
+        let json = resp.json::<serde_json::Value>().await?;
+        log::info!("response from Yandex Maps Places API: {json}");
 
         let empty: Vec<serde_json::Value> = Vec::new();
-        let result = resp["features"]
+        let result = json["features"]
             .as_array()
             .unwrap_or(&empty)
             .iter()
@@ -120,6 +138,16 @@ impl LocFinder for YandexLocFinder {
             YandexAPIMode::Place => self.find_place(query, lang_code).await,
             YandexAPIMode::GeoPlace => self.find_geo_place(query, lang_code).await,
         }
+    }
+}
+
+impl WithCachedResponseCounters for YandexLocFinder {
+    fn cached_resp_counter(&self) -> &prometheus::Counter {
+        &self.cached_resp_counter
+    }
+
+    fn fetched_resp_counter(&self) -> &prometheus::Counter {
+        &self.fetched_resp_counter
     }
 }
 

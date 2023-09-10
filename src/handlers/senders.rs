@@ -60,6 +60,8 @@ async fn send_locations_keyboard(bot: &Bot, chat_id: ChatId, locations: Vec<Loca
     let mut msg = bot.send_message(chat_id, t!("title.address-list.has-data", locale = lang_code));
     let keyboard = InlineKeyboardMarkup::new(buttons);
     msg.reply_markup = Some(InlineKeyboard(keyboard));
+
+    log::debug!("Send locations keyboard for {}: {:?}", chat_id, *msg);
     msg.await
 }
 
