@@ -1,4 +1,8 @@
 mod senders;
+mod limiter;
+
+#[cfg(test)]
+mod limiter_test;
 
 use regex::Regex;
 use once_cell::sync::Lazy;
@@ -12,6 +16,7 @@ use teloxide::dispatching::dialogue::GetChatId;
 use teloxide::types::Me;
 use teloxide::types::ParseMode::MarkdownV2;
 use teloxide::utils::command::BotCommands;
+use crate::handlers::limiter::RequestsLimiter;
 
 #[derive(BotCommands, Clone)]
 #[command(rename_rule = "lowercase")]
@@ -33,25 +38,39 @@ static FINDER: Lazy<SearchChain> = Lazy::new(|| {
             Box::new(yandex::YandexLocFinder::from_env())
         ])
 });
+static INLINE_REQUESTS_LIMITER: Lazy<RequestsLimiter> = Lazy::new(|| RequestsLimiter::from_env());
 
 pub fn preload_env_vars() {
     google::preload_env_vars();
     yandex::preload_env_vars();
+
+    let _ = *COORDS_REGEXP;
+    let _ = *FINDER;
+    let _ = *INLINE_REQUESTS_LIMITER;
 }
 
 pub async fn inline_handler(bot: Bot, q: InlineQuery) -> HandlerResult {
-    if q.query.is_empty() {
+    if q.query.is_empty() || rate_limit_exceeded(&q).await {
         bot.answer_inline_query(q.id, vec![]).await?;
         return Ok(());
     }
 
     log::info!("Got an inline query: {}", q.query);
-    INLINE_COUNTER.inc();
+    INLINE_COUNTER.inc_allowed();
 
     let lang_code = &ensure_lang_code(q.from.id, q.from.language_code.clone());
     let locations = resolve_locations(q.query, lang_code).await?;
 
     senders::send_locations_inline(bot, q.id, lang_code, locations).await
+}
+
+async fn rate_limit_exceeded(q: &InlineQuery) -> bool {
+    let forbidden = !INLINE_REQUESTS_LIMITER.is_req_allowed(q).await;
+    if forbidden {
+        log::info!("Requests limit was exceeded for {}", q.from.id);
+        INLINE_COUNTER.inc_forbidden();
+    }
+    forbidden
 }
 
 pub async fn inline_chosen_handler(_: Bot, _: ChosenInlineResult) -> HandlerResult {

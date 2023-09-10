@@ -7,8 +7,12 @@ use prometheus::{Encoder, Opts, TextEncoder};
 pub static REGISTRY: Lazy<Registry> = Lazy::new(|| Registry(prometheus::Registry::new()));
 
 // Export special preconstructed counters for Teloxide's handlers.
-pub static INLINE_COUNTER: Lazy<Counter> = Lazy::new(|| {
-    Counter::new("inline", Opts::new("inline_usage_total", "count of inline queries processed by the bot"))
+pub static INLINE_COUNTER: Lazy<InlineCounters> = Lazy::new(|| {
+    let opts = Opts::new("inline_usage_total", "count of inline queries processed by the bot or rejected by the rate limiter");
+    InlineCounters {
+        allowed: Counter::new("inline (allowed)", opts.clone().const_label("limiter", "allowed")),
+        forbidden: Counter::new("inline (forbidden)", opts.const_label("limiter", "forbidden")),
+    }
 });
 pub static INLINE_CHOSEN_COUNTER: Lazy<Counter> = Lazy::new(|| {
     Counter::new("inline_chosen", Opts::new("inline_chosen_total", "count of inline results chosen by the users"))
@@ -28,7 +32,8 @@ pub static CMD_LOC_COUNTER: Lazy<Counter> = Lazy::new(|| {
 
 pub fn init() -> axum::Router {
     let prometheus = REGISTRY
-        .register(&*INLINE_COUNTER)
+        .register(&INLINE_COUNTER.allowed)
+        .register(&INLINE_COUNTER.forbidden)
         .register(&*INLINE_CHOSEN_COUNTER)
         .register(&*MESSAGE_COUNTER)
         .register(&*CMD_START_COUNTER)
@@ -52,6 +57,10 @@ pub fn init() -> axum::Router {
 pub struct Counter {
     inner: prometheus::Counter,
     name: String
+}
+pub struct InlineCounters {
+    allowed: Counter,
+    forbidden: Counter,
 }
 pub struct Registry(prometheus::Registry);
 
@@ -85,5 +94,15 @@ impl Registry {
 
     fn unwrap(&self) -> prometheus::Registry {
         self.0.clone()
+    }
+}
+
+impl InlineCounters {
+    pub fn inc_allowed(&self) {
+        self.allowed.inc()
+    }
+
+    pub fn inc_forbidden(&self) {
+        self.forbidden.inc()
     }
 }
