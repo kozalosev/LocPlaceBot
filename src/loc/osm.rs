@@ -1,10 +1,9 @@
 use async_trait::async_trait;
 use reqwest::header::{ACCEPT_LANGUAGE, USER_AGENT};
-use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
-use http_cache::{HitOrMiss, XCACHELOOKUP};
-use http_cache_reqwest::{Cache, CacheMode, MokaManager, HttpCache, CacheOptions};
+use reqwest_middleware::ClientWithMiddleware;
 use prometheus::Opts;
-use super::{LocFinder, LocResult, Location};
+use super::cache::WithCachedResponseCounters;
+use super::{cache, LocFinder, LocResult, Location};
 use crate::metrics;
 
 pub struct OpenStreetMapLocFinder {
@@ -17,16 +16,6 @@ pub struct OpenStreetMapLocFinder {
 
 impl OpenStreetMapLocFinder {
     pub fn new() -> OpenStreetMapLocFinder {
-        let client = reqwest::Client::builder()
-            .build().expect("couldn't create an HTTP client");
-        let client = ClientBuilder::new(client)
-            .with(Cache(HttpCache {
-                mode: CacheMode::Default,
-                manager: MokaManager::default(),
-                options: Some(CacheOptions::default()),
-            }))
-            .build();
-
         let api_req_opts = Opts::new("open_street_map_api_requests_total", "count of requests to the OpenStreetMap API");
 
         let resp_opts = Opts::new("open_street_map_api_responses_total", "count of responses from the OpenStreetMap API split by the source");
@@ -34,7 +23,7 @@ impl OpenStreetMapLocFinder {
         let from_remote_opts = resp_opts.const_label("source", "remote");
 
         OpenStreetMapLocFinder {
-            client,
+            client: cache::caching_client(),
 
             api_req_counter: metrics::REGISTRY.register_counter("OpenStreetMap API requests", api_req_opts),
             cached_resp_counter: metrics::REGISTRY.register_counter("OpenStreetMap API requests", from_cache_opts),
@@ -52,15 +41,8 @@ impl LocFinder for OpenStreetMapLocFinder {
         let resp = self.client.get(url)
             .header(USER_AGENT, "kozalosev/LocPlaceBot")
             .header(ACCEPT_LANGUAGE, lang_code)
-            .send()
-            .await?;
-
-        let resp_counter = resp.headers()
-            .get(XCACHELOOKUP)
-            .filter(|x| x.to_str().unwrap_or("") == HitOrMiss::HIT.to_string())
-            .map(|_| &self.cached_resp_counter)
-            .unwrap_or(&self.fetched_resp_counter);
-        resp_counter.inc();
+            .send().await?;
+        self.inc_resp_counter(&resp);
 
         let json = resp.json::<serde_json::Value>().await?;
         log::info!("response from Open Street Map Nominatim API: {json}");
@@ -69,6 +51,16 @@ impl LocFinder for OpenStreetMapLocFinder {
             .filter_map(map_resp)
             .collect();
         Ok(results)
+    }
+}
+
+impl WithCachedResponseCounters for OpenStreetMapLocFinder {
+    fn cached_resp_counter(&self) -> &prometheus::Counter {
+        &self.cached_resp_counter
+    }
+
+    fn fetched_resp_counter(&self) -> &prometheus::Counter {
+        &self.fetched_resp_counter
     }
 }
 

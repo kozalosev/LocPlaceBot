@@ -4,6 +4,7 @@ use async_trait::async_trait;
 pub mod google;
 pub mod yandex;
 pub mod osm;
+pub mod cache;
 
 #[cfg(test)]
 mod test;

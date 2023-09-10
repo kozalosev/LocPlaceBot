@@ -1,8 +1,10 @@
 use std::str::FromStr;
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
+use reqwest_middleware::ClientWithMiddleware;
 use strum_macros::EnumString;
-use crate::loc::{Location, LocFinder, LocResult};
+use super::cache::WithCachedResponseCounters;
+use super::{cache, Location, LocFinder, LocResult};
 use crate::metrics;
 
 const FINDER_ENV_API_KEY: &str = "GOOGLE_MAPS_API_KEY";
@@ -27,11 +29,14 @@ pub fn preload_env_vars() {
 }
 
 pub struct GoogleLocFinder {
+    client: ClientWithMiddleware,
     api_key: String,
 
     geocode_req_counter: prometheus::Counter,
     place_req_counter: prometheus::Counter,
     text_req_counter: prometheus::Counter,
+    cached_resp_counter: prometheus::Counter,
+    fetched_resp_counter: prometheus::Counter,
 }
 
 impl GoogleLocFinder {
@@ -41,12 +46,19 @@ impl GoogleLocFinder {
         let place_opts   = base_opts.clone().const_label("API", "place");
         let text_opts    = base_opts.clone().const_label("API", "place-text");
 
+        let resp_opts = prometheus::Opts::new("google_maps_api_responses_total", "count of responses from the Google Maps API split by the source");
+        let from_cache_opts = resp_opts.clone().const_label("source", "cache");
+        let from_remote_opts = resp_opts.const_label("source", "remote");
+
         GoogleLocFinder {
+            client: cache::caching_client(),
             api_key: api_key.to_string(),
 
             geocode_req_counter: metrics::REGISTRY.register_counter("Google Maps API (geocode) requests", geocode_opts),
             place_req_counter:   metrics::REGISTRY.register_counter("Google Maps API (place) requests", place_opts),
             text_req_counter:    metrics::REGISTRY.register_counter("Google Maps API (place, text) requests", text_opts),
+            cached_resp_counter:  metrics::REGISTRY.register_counter("Google Maps API requests", from_cache_opts),
+            fetched_resp_counter: metrics::REGISTRY.register_counter("Google Maps API requests", from_remote_opts),
         }
     }
 
@@ -76,11 +88,13 @@ impl GoogleLocFinder {
 
         let url = format!("https://maps.googleapis.com/maps/api/geocode/json?key={}&address={}&language={}&region={}",
                           self.api_key, address, lang_code, lang_code);
-        let resp = reqwest::get(url).await?.json::<serde_json::Value>().await?;
+        let resp = self.client.get(url).send().await?;
+        self.inc_resp_counter(&resp);
 
-        log::info!("response from Google Maps Geocoding API: {}", resp);
+        let json = resp.json::<serde_json::Value>().await?;
+        log::info!("response from Google Maps Geocoding API: {json}");
 
-        let results = resp["results"].as_array().unwrap().iter()
+        let results = json["results"].as_array().unwrap().iter()
             .filter_map(map_resp)
             .collect();
         Ok(results)
@@ -91,11 +105,13 @@ impl GoogleLocFinder {
 
         let url = format!("https://maps.googleapis.com/maps/api/place/findplacefromtext/json?key={}&input={}&inputtype=textquery&language={}&fields=formatted_address,geometry,name",
                           self.api_key, address, lang_code);
-        let resp = reqwest::get(url).await?.json::<serde_json::Value>().await?;
+        let resp = self.client.get(url).send().await?;
+        self.inc_resp_counter(&resp);
 
-        log::info!("response from Google Maps Find Place API: {}", resp);
+        let json = resp.json::<serde_json::Value>().await?;
+        log::info!("response from Google Maps Find Place API: {json}");
 
-        let results: Vec<Location> = resp["candidates"].as_array().unwrap().iter()
+        let results: Vec<Location> = json["candidates"].as_array().unwrap().iter()
             .filter_map(map_resp)
             .collect();
 
@@ -107,11 +123,13 @@ impl GoogleLocFinder {
 
         let url = format!("https://maps.googleapis.com/maps/api/place/textsearch/json?key={}&query={}&language={}&region={}",
                           self.api_key, address, lang_code, lang_code);
-        let resp = reqwest::get(url).await?.json::<serde_json::Value>().await?;
+        let resp = self.client.get(url).send().await?;
+        self.inc_resp_counter(&resp);
 
-        log::info!("response from Google Maps Text Search API: {}", resp);
+        let json = resp.json::<serde_json::Value>().await?;
+        log::info!("response from Google Maps Text Search API: {json}");
 
-        let results: Vec<Location> = resp["results"].as_array().unwrap().iter()
+        let results: Vec<Location> = json["results"].as_array().unwrap().iter()
             .filter_map(map_resp)
             .collect();
 
@@ -128,6 +146,16 @@ impl LocFinder for GoogleLocFinder {
             GoogleAPIMode::GeoPlace => self.find(query, lang_code).await,
             GoogleAPIMode::GeoText => self.find_more(query, lang_code).await,
         }
+    }
+}
+
+impl WithCachedResponseCounters for GoogleLocFinder {
+    fn cached_resp_counter(&self) -> &prometheus::Counter {
+        &self.cached_resp_counter
+    }
+
+    fn fetched_resp_counter(&self) -> &prometheus::Counter {
+        &self.fetched_resp_counter
     }
 }
 
