@@ -28,3 +28,9 @@ http-cache = { version = "0.11.0", default-features = false, features = ["manage
 http-cache-reqwest = { version = "0.9.0", default-features = false, features = ["manager-moka"] }
 reqwest-middleware = "0.2.2"
 anyhow = "1.0.71"
+redis = { version = "0.23.3", features = ["ahash", "tokio-comp", "connection-manager"] }
+mobc = "0.8.1"
+mobc-redis = "0.8.0"
+
+[dev-dependencies]
+testcontainers = "0.14.0"

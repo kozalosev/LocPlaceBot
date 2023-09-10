@@ -16,9 +16,35 @@ services:
       - YAPI_MODE
       - MSG_LOC_LIMIT
       - WEBHOOK_URL
+      - REDIS_HOST
+      - REDIS_PORT
+      - REDIS_PASSWORD
+      - REQUESTS_LIMITER_MAX_ALLOWED
+      - REQUESTS_LIMITER_TIMEFRAME
     expose:
       - 8080
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
+    logging:
+      driver: local
+  redis:
+    image: redis:6.2-alpine
+    container_name: locplacebot-redis
+    environment:
+      - REDIS_PORT
+      - REDIS_PASSWORD
+      - REDISCLI_AUTH=${REDIS_PASSWORD}
+    healthcheck:
+      test: [ "CMD-SHELL", "redis-cli -p $$REDIS_PORT -a $$REDIS_PASSWORD ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    expose:
+      - ${REDIS_PORT}
+    command: redis-server --save 20 1 --loglevel warning --requirepass ${REDIS_PASSWORD:?error} --port ${REDIS_PORT}
+    volumes:
+      - ./data/redis:/data
     logging:
       driver: local
