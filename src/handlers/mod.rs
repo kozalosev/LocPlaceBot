@@ -8,7 +8,7 @@ use regex::Regex;
 use once_cell::sync::Lazy;
 use rust_i18n::t;
 use crate::help;
-use crate::loc::{Location, SearchChain, google, yandex, osm};
+use crate::loc::{Location, SearchChain, google, yandex, osm, finder};
 use crate::metrics::{MESSAGE_COUNTER, INLINE_COUNTER, INLINE_CHOSEN_COUNTER, CMD_HELP_COUNTER, CMD_START_COUNTER, CMD_LOC_COUNTER};
 use crate::utils::ensure_lang_code;
 use teloxide::prelude::*;
@@ -31,12 +31,19 @@ pub type HandlerResult = Result<(), Box<dyn std::error::Error + Send + Sync>>;
 static COORDS_REGEXP: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?P<latitude>-?\d{1,2}(\.\d+)?),? (?P<longitude>-?\d{1,3}(\.\d+)?)")
     .expect("Invalid regex!"));
 static FINDER: Lazy<SearchChain> = Lazy::new(|| {
-        SearchChain::new(vec![
-            Box::new(osm::OpenStreetMapLocFinder::new()),
-            Box::new(google::GoogleLocFinder::from_env())
-        ]).for_lang_code("ru", vec![
-            Box::new(yandex::YandexLocFinder::from_env())
-        ])
+    let osm = finder("OSM", osm::OpenStreetMapLocFinder::new());
+    let yandex = finder("YANDEX", yandex::YandexLocFinder::from_env());
+    let google = finder("GOOGLE", google::GoogleLocFinder::from_env());
+
+    SearchChain::new(vec![
+        osm.clone(),
+        google.clone(),
+        yandex.clone(),
+    ]).for_lang_code("ru", vec![
+        yandex,
+        osm,
+        google,
+    ])
 });
 static INLINE_REQUESTS_LIMITER: Lazy<RequestsLimiter> = Lazy::new(|| RequestsLimiter::from_env());
 

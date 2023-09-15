@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use async_trait::async_trait;
+use crate::loc;
 use super::SearchChain;
 use super::Location;
 use super::LocResult;
@@ -10,9 +11,9 @@ async fn test_search_chain() {
     let global_address = "123456 Global Test Land";
     let ru_address = "123456 Russia Test Land";
 
-    let empty_finder = boxed_finder(Vec::default());
-    let global_finder = boxed_finder(vec![location(global_address)]);
-    let ru_finder = boxed_finder(vec![location(ru_address)]);
+    let empty_finder = stub_finder(Vec::default());
+    let global_finder = stub_finder(vec![location(global_address)]);
+    let ru_finder = stub_finder(vec![location(ru_address)]);
 
     let chain = SearchChain::new(vec![empty_finder, global_finder])
         .for_lang_code("ru", vec![ru_finder]);
@@ -27,8 +28,8 @@ async fn test_search_chain() {
     }
 }
 
-fn boxed_finder(result: Vec<Location>) -> Box<StubLocFinder> {
-    Box::new(StubLocFinder { result })
+fn stub_finder(result: Vec<Location>) -> loc::LocFinderChainWrapper {
+    loc::finder("", StubLocFinder { result })
 }
 
 fn location(address: &str) -> Location {
