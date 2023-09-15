@@ -47,7 +47,7 @@ impl RequestsLimiter {
         let key = REDIS_KEY_PREFIX.to_string() + uid.to_string().as_str();
         let req_count = self.fetch_requests_count(key).await?;
 
-        log::debug!("Ordinal number of request is {req_count}");
+        log::debug!("The ordinal number of the request is {req_count}");
         Ok(req_count <= self.max_allowed)
     }
 
@@ -102,7 +102,11 @@ fn resolve_mandatory_env<T: FromStr + ToString>(key: &str) -> T {
         .expect(format!("{key} is not set but mandatory!").as_str());
     let val = T::from_str(val.as_str())
         .ok().expect(format!("Couldn't convert {key} for some reason").as_str());
-    log::info!("{} is set to {}", key, val.to_string());
+    if key.to_lowercase().contains("password") {
+        log::info!("{} is set to ***", key);
+    } else {
+        log::info!("{} is set to {}", key, val.to_string());
+    }
     val
 }
 
