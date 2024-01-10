@@ -1,0 +1,6 @@
+Accepting this agreement, I allow @kozalo, his bots and other applications in the ecosystem to save and store my personal data such as:
+➖ name \(full name got from Telegram or inputted manually\);
+➖ language and approximate location \(to provide more accurate results\)\.
+The list of collected data may be changed in the future\. I agree to accept the changes without a need to perform additional actions\.
+
+The data is stored inside the database of *user\-service* which is an open sourced project located at GitHub\. You may always check the data, we collect, here: https://github\.com/Kozalo\-Blog/user\-service/blob/main/migrations/

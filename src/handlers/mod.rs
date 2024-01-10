@@ -1,22 +1,27 @@
+pub mod options;
+
 mod senders;
 mod limiter;
 
 #[cfg(test)]
 mod limiter_test;
 
+use anyhow::anyhow;
+use derive_more::From;
 use regex::Regex;
 use once_cell::sync::Lazy;
 use rust_i18n::t;
-use crate::help;
+use crate::{help, metrics};
 use crate::loc::{Location, SearchChain, google, yandex, osm, finder};
-use crate::metrics::{MESSAGE_COUNTER, INLINE_COUNTER, INLINE_CHOSEN_COUNTER, CMD_HELP_COUNTER, CMD_START_COUNTER, CMD_LOC_COUNTER};
 use crate::utils::ensure_lang_code;
 use teloxide::prelude::*;
 use teloxide::dispatching::dialogue::GetChatId;
-use teloxide::types::Me;
+use teloxide::types::{Me, ReplyMarkup};
 use teloxide::types::ParseMode::MarkdownV2;
 use teloxide::utils::command::BotCommands;
 use crate::handlers::limiter::RequestsLimiter;
+use crate::handlers::options::LanguageCode;
+use crate::users::{UserService, UserServiceClient, UserServiceClientGrpc};
 
 #[derive(BotCommands, Clone)]
 #[command(rename_rule = "lowercase")]
@@ -24,6 +29,10 @@ pub enum Command {
     Help,
     Start,
     Loc,
+    SetLanguage(LanguageCode),
+    SetLang(LanguageCode),
+    SetLocation,
+    SetLoc,
 }
 
 pub type HandlerResult = Result<(), Box<dyn std::error::Error + Send + Sync>>;
@@ -56,16 +65,16 @@ pub fn preload_env_vars() {
     let _ = *INLINE_REQUESTS_LIMITER;
 }
 
-pub async fn inline_handler(bot: Bot, q: InlineQuery) -> HandlerResult {
+pub async fn inline_handler(bot: Bot, q: InlineQuery, usr_client: UserService<UserServiceClientGrpc>) -> HandlerResult {
     if q.query.is_empty() || rate_limit_exceeded(&q).await {
         bot.answer_inline_query(q.id, vec![]).await?;
         return Ok(());
     }
 
     log::info!("Got an inline query: {}", q.query);
-    INLINE_COUNTER.inc_allowed();
+    metrics::INLINE_COUNTER.inc_allowed();
 
-    let lang_code = &ensure_lang_code(q.from.id, q.from.language_code.clone());
+    let lang_code = &ensure_lang_code(q.from.id, q.from.language_code.clone(), &usr_client).await;
     let locations = resolve_locations(q.query, lang_code).await?;
 
     senders::send_locations_inline(bot, q.id, lang_code, locations).await
@@ -75,50 +84,72 @@ async fn rate_limit_exceeded(q: &InlineQuery) -> bool {
     let forbidden = !INLINE_REQUESTS_LIMITER.is_req_allowed(q).await;
     if forbidden {
         log::info!("Requests limit was exceeded for {}", q.from.id);
-        INLINE_COUNTER.inc_forbidden();
+        metrics::INLINE_COUNTER.inc_forbidden();
     }
     forbidden
 }
 
 pub async fn inline_chosen_handler(_: Bot, _: ChosenInlineResult) -> HandlerResult {
-    INLINE_CHOSEN_COUNTER.inc();
+    metrics::INLINE_CHOSEN_COUNTER.inc();
     Ok(())
 }
 
-pub async fn command_handler(bot: Bot, msg: Message, cmd: Command, me: Me) -> HandlerResult {
-    let help = match cmd {
+#[derive(From)]
+enum AnswerMessage {
+    Text(String),
+    TextWithMarkup(String, ReplyMarkup),
+}
+
+pub async fn command_handler(bot: Bot, msg: Message, cmd: Command, me: Me, usr_client: UserService<UserServiceClientGrpc>) -> HandlerResult {
+    let help_or_status: AnswerMessage = match cmd {
         Command::Start if msg.from().is_some() => {
-            CMD_START_COUNTER.inc();
-            help::get_start_message(msg.from().unwrap(), me)
+            metrics::CMD_START_COUNTER.inc();
+            help::get_start_message(msg.from().unwrap(), me, usr_client).await.into()
         },
         Command::Start => {
-            log::warn!("The /start command was invoked without a FROM field for message: {:?}", msg);
-            help::get_help_message(msg.from(), me)
+            log::warn!("The /start command was invoked without a FROM field for a message: {msg:?}");
+            let lang_code = &determine_lang_code(&msg, &usr_client).await?;
+            help::get_help_message(me, lang_code).into()
         }
         Command::Help => {
-            CMD_HELP_COUNTER.inc();
-            help::get_help_message(msg.from(), me)
-        },
-        Command::Loc => {
-            CMD_LOC_COUNTER.inc();
-            // return from the outer function
-            return cmd_loc_handler(bot, msg).await
+            metrics::CMD_HELP_COUNTER.inc();
+            let lang_code = &determine_lang_code(&msg, &usr_client).await?;
+            help::get_help_message(me, lang_code).into()
         }
+        Command::Loc => {
+            metrics::CMD_LOC_COUNTER.inc();
+            // return from the outer function
+            return cmd_loc_handler(bot, msg, usr_client).await
+        }
+        Command::SetLanguage(code) | Command::SetLang(code) if msg.from().is_some() && usr_client.enabled() => {
+            metrics::CMD_SET_LANGUAGE_COUNTER.inc();
+            let user = msg.from().unwrap();
+            options::cmd_set_language_handler(usr_client.unwrap(), user, code).await?
+        }
+        Command::SetLocation | Command::SetLoc if msg.from().is_some() && usr_client.enabled() => {
+            metrics::CMD_SET_LOCATION_COUNTER.inc();
+            let user = msg.from().unwrap();
+            options::cmd_set_location_handler(usr_client.unwrap(), user).await?
+        },
+        _ if usr_client.disabled() => {
+            let lang_code = &determine_lang_code(&msg, &usr_client).await?;
+            log::error!("user-service is disabled but a command was invoked by {:?}", msg.from());
+            t!("error.service.user.disabled", locale = lang_code).into()
+        },
+        _ if msg.from().is_none() => Err(anyhow!("some command was invoked without a FROM field for a message: {msg:?}"))?,
+        _ => Err(anyhow!("unexpected match arm in the command_handler"))?
     };
-
-    let mut answer = bot.send_message(msg.chat.id, help);
-    answer.parse_mode = Some(MarkdownV2);
-    answer.await?;
+    process_answer_message(bot, msg.chat.id, help_or_status).await?;
     Ok(())
 }
 
-pub async fn message_handler(bot: Bot, msg: Message) -> HandlerResult {
+pub async fn message_handler(bot: Bot, msg: Message, usr_client: UserService<UserServiceClientGrpc>) -> HandlerResult {
     if !msg.chat.is_private() {
         return Ok(())
     }
 
-    MESSAGE_COUNTER.inc();
-    cmd_loc_handler(bot, msg).await
+    metrics::MESSAGE_COUNTER.inc();
+    cmd_loc_handler(bot, msg, usr_client).await
 }
 
 pub async fn callback_handler(bot: Bot, q: CallbackQuery) -> HandlerResult {
@@ -144,22 +175,15 @@ pub async fn callback_handler(bot: Bot, q: CallbackQuery) -> HandlerResult {
     Ok(())
 }
 
-async fn cmd_loc_handler(bot: Bot, msg: Message) -> HandlerResult {
-    let locations = resolve_locations_for_message(&msg).await?;
-    let lang_code = msg.from()
-        .and_then(|u| u.language_code.clone())
-        .unwrap_or(String::default());
-    senders::send_locations_as_messages(bot, msg.chat.id, locations, lang_code.as_str()).await?;
-    Ok(())
-}
-
-async fn resolve_locations_for_message(msg: &Message) -> Result<Vec<Location>, Box<dyn std::error::Error + Send + Sync>> {
+async fn cmd_loc_handler(bot: Bot, msg: Message, usr_client: UserService<impl UserServiceClient>) -> HandlerResult {
     let text = msg.text().ok_or("no text")?.to_string();
-    let from = msg.from().ok_or("no from")?;
     log::info!("Got a message query: {}", text);
 
-    let lang_code = &ensure_lang_code(from.id, from.language_code.clone());
-    resolve_locations(text, lang_code).await
+    let from = msg.from().ok_or("no from")?;
+    let lang_code = &ensure_lang_code(from.id, from.language_code.clone(), &usr_client).await;
+    let locations = resolve_locations(text, lang_code).await?;
+    senders::send_locations_as_messages(bot, msg.chat.id, locations, lang_code).await?;
+    Ok(())
 }
 
 async fn resolve_locations(query: String, lang_code: &str) -> Result<Vec<Location>, Box<dyn std::error::Error + Send + Sync>> {
@@ -172,4 +196,22 @@ async fn resolve_locations(query: String, lang_code: &str) -> Result<Vec<Locatio
         FINDER.find(query, lang_code).await
     };
     Ok(locations)
+}
+
+async fn determine_lang_code(msg: &Message, usr_client: &UserService<impl UserServiceClient>) -> anyhow::Result<String> {
+    let from = msg.from().ok_or(anyhow!("no from"))?;
+    Ok(ensure_lang_code(from.id, from.language_code.clone(), &usr_client).await)
+}
+
+async fn process_answer_message(bot: Bot, chat_id: ChatId, answer: AnswerMessage) -> HandlerResult {
+    let (text, keyboard) = match answer {
+        AnswerMessage::Text(text) => (text, None),
+        AnswerMessage::TextWithMarkup(text, keyboard) => (text, Some(keyboard))
+    };
+
+    let mut req = bot.send_message(chat_id, text)
+        .parse_mode(MarkdownV2);
+    req.reply_markup = keyboard;
+    req.await?;
+    Ok(())
 }

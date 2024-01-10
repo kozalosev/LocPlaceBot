@@ -29,6 +29,12 @@ pub static CMD_HELP_COUNTER: Lazy<Counter> = Lazy::new(|| {
 pub static CMD_LOC_COUNTER: Lazy<Counter> = Lazy::new(|| {
     Counter::new("command_loc", Opts::new("command_loc_usage_total", "count of /loc invocations"))
 });
+pub static CMD_SET_LANGUAGE_COUNTER: Lazy<Counter> = Lazy::new(|| {
+    Counter::new("command_set_language", Opts::new("command_set_language_usage_total", "count of /setlanguage invocations"))
+});
+pub static CMD_SET_LOCATION_COUNTER: Lazy<Counter> = Lazy::new(|| {
+    Counter::new("command_set_location", Opts::new("command_set_location_usage_total", "count of /setlocation invocations"))
+});
 
 pub fn init() -> axum::Router {
     let prometheus = REGISTRY
@@ -39,6 +45,8 @@ pub fn init() -> axum::Router {
         .register(&*CMD_START_COUNTER)
         .register(&*CMD_HELP_COUNTER)
         .register(&*CMD_LOC_COUNTER)
+        .register(&*CMD_SET_LANGUAGE_COUNTER)
+        .register(&*CMD_SET_LOCATION_COUNTER)
         .unwrap();
 
     let (prometheus_layer, metric_handle) = PrometheusMetricLayer::pair();

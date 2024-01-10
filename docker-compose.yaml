@@ -21,6 +21,8 @@ services:
       - REDIS_PASSWORD
       - REQUESTS_LIMITER_MAX_ALLOWED
       - REQUESTS_LIMITER_TIMEFRAME
+      - GRPC_ADDR_USER_SERVICE
+      - USER_CACHE_TIME_SECS
     expose:
       - 8080
     labels:
