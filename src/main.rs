@@ -10,6 +10,7 @@ mod eula;
 
 use std::env::VarError;
 use std::net::SocketAddr;
+use std::time::Duration;
 use axum::Router;
 use reqwest::Url;
 use rust_i18n::i18n;
@@ -22,6 +23,7 @@ use crate::handlers::options::location::LocationState;
 use crate::users::{Hello, UserService, UserServiceClientGrpc};
 
 const ENV_WEBHOOK_URL: &str = "WEBHOOK_URL";
+const ENV_CACHE_CLEAN_UP_INTERVAL_SECS: &str = "CACHE_CLEAN_UP_INTERVAL_SECS";
 
 i18n!();    // load localizations with default parameters
 
@@ -57,7 +59,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let user_service_grpc = UserServiceClientGrpc::with_addr_from_env(Hello::from("LocPlaceBot")).await;
     let user_service = match user_service_grpc {
-        Ok(grpc) => UserService::Connected(grpc),
+        Ok(grpc) => {
+            let grpc_client = grpc.clone();
+            let interval = std::env::var(ENV_CACHE_CLEAN_UP_INTERVAL_SECS)
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(3600);
+            let interval = Duration::from_secs(interval);
+            tokio::spawn(async move {
+                loop {
+                    grpc_client.clean_up_cache();
+                    tokio::time::sleep(interval).await;
+                }
+            });
+            UserService::Connected(grpc)
+        },
         Err(e) => {
             log::error!("couldn't connect to user-service: {e}");
             UserService::Disabled

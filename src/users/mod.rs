@@ -160,6 +160,10 @@ impl UserServiceClientGrpc {
         Ok(client)
     }
 
+    pub fn clean_up_cache(&self) {
+        self.cache.retain(|_, usr| is_user_fresh(usr));
+    }
+
     async fn get_internal_id(&self, uid: UserId) -> Result<i64, tonic::Status> {
         self.get(uid).await?
             .map(|u| u.id)
@@ -172,10 +176,7 @@ impl UserServiceClient for UserServiceClientGrpc {
     async fn get(&self, uid: UserId) -> Result<Option<User>, tonic::Status> {
         let cached_user = self.cache
             .get(&uid)
-            .filter(|usr| {
-                let time_difference = tokio::time::Instant::now() - usr.updated_at;
-                time_difference.as_secs() <= *USER_CACHE_TIME_SECS
-            })
+            .filter(|usr| is_user_fresh(usr))
             .map(|usr| usr.clone());
         let maybe_usr = match cached_user {
             Some(cached) => cached.user,
@@ -251,4 +252,9 @@ impl UserServiceClient for UserServiceClientGrpc {
         self.cache.remove(&uid);
         Ok(())
     }
+}
+
+fn is_user_fresh(usr: &CachedUser) -> bool {
+    let time_difference = tokio::time::Instant::now() - usr.updated_at;
+    time_difference.as_secs() <= *USER_CACHE_TIME_SECS
 }

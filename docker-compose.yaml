@@ -23,6 +23,7 @@ services:
       - REQUESTS_LIMITER_TIMEFRAME
       - GRPC_ADDR_USER_SERVICE
       - USER_CACHE_TIME_SECS
+      - CACHE_CLEAN_UP_INTERVAL_SECS
     expose:
       - 8080
     labels:
