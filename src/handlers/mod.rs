@@ -31,8 +31,6 @@ pub enum Command {
     Loc,
     SetLanguage(LanguageCode),
     SetLang(LanguageCode),
-    SetLocation,
-    SetLoc,
 }
 
 pub type HandlerResult = Result<(), Box<dyn std::error::Error + Send + Sync>>;
@@ -126,11 +124,6 @@ pub async fn command_handler(bot: Bot, msg: Message, cmd: Command, me: Me, usr_c
             let user = msg.from().unwrap();
             options::cmd_set_language_handler(usr_client.unwrap(), user, code).await?
         }
-        Command::SetLocation | Command::SetLoc if msg.from().is_some() && usr_client.enabled() => {
-            metrics::CMD_SET_LOCATION_COUNTER.inc();
-            let user = msg.from().unwrap();
-            options::cmd_set_location_handler(usr_client.unwrap(), user).await?
-        },
         _ if usr_client.disabled() => {
             let lang_code = &determine_lang_code(&msg, &usr_client).await?;
             log::error!("user-service is disabled but a command was invoked by {:?}", msg.from());

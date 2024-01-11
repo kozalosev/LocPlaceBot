@@ -13,9 +13,12 @@ use std::net::SocketAddr;
 use axum::Router;
 use reqwest::Url;
 use rust_i18n::i18n;
+use teloxide::dispatching::dialogue::InMemStorage;
 use teloxide::dptree::deps;
 use teloxide::prelude::*;
 use teloxide::update_listeners::webhooks::{axum_to_router, Options};
+use crate::handlers::options::CancellationCallbackData;
+use crate::handlers::options::location::LocationState;
 use crate::users::{Hello, UserService, UserServiceClientGrpc};
 
 const ENV_WEBHOOK_URL: &str = "WEBHOOK_URL";
@@ -30,11 +33,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let handler = dptree::entry()
         .branch(Update::filter_inline_query().endpoint(handlers::inline_handler))
         .branch(Update::filter_chosen_inline_result().endpoint(handlers::inline_chosen_handler))
+        .branch(Update::filter_message().filter_command::<handlers::options::location::Commands>().enter_dialogue::<Message, InMemStorage<LocationState>, LocationState>()
+            .branch(dptree::case![LocationState::Start].endpoint(handlers::options::location::start)))
+        .branch(Update::filter_message().enter_dialogue::<Message, InMemStorage<LocationState>, LocationState>()
+            .branch(dptree::case![LocationState::Requested].endpoint(handlers::options::location::requested)))
         .branch(Update::filter_message().filter_command::<handlers::Command>().endpoint(handlers::command_handler))
-        .branch(Update::filter_message().filter(handlers::options::location::location_filter).endpoint(handlers::options::location::location_handler))
         .branch(Update::filter_message().endpoint(handlers::message_handler))
-        .branch(Update::filter_callback_query().filter(handlers::options::location::callback_filter).endpoint(handlers::options::location::callback_handler))
         .branch(Update::filter_callback_query().filter(handlers::options::consent::callback_filter).endpoint(handlers::options::consent::callback_handler))
+        .branch(Update::filter_callback_query().filter(handlers::options::cancellation_filter::<CancellationCallbackData>).endpoint(handlers::options::cancellation_handler::<LocationState, CancellationCallbackData>))
         .branch(Update::filter_callback_query().endpoint(handlers::callback_handler));
 
     let bot = Bot::from_env();
@@ -58,7 +64,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
     let deps = deps![
-        user_service
+        user_service,
+        InMemStorage::<LocationState>::new()
     ];
 
     match webhook_url {

@@ -5,11 +5,13 @@ mod callback;
 use std::convert::Infallible;
 use std::str::FromStr;
 use rust_i18n::t;
-use teloxide::types::{ButtonRequest, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, KeyboardMarkup};
+use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup};
 use crate::eula;
 use crate::handlers::AnswerMessage;
 use crate::users::UserServiceClient;
 use crate::utils::ensure_lang_code;
+
+pub use callback::{cancellation_filter, cancellation_handler, CancellationCallbackData};
 
 #[derive(Debug, strum_macros::Display, Clone)]
 #[strum(serialize_all="lowercase")]
@@ -53,21 +55,6 @@ pub(super) async fn cmd_set_language_handler(usr_client: impl UserServiceClient,
         },
         None => register_user(usr_client, user).await
     }
-}
-
-pub(super) async fn cmd_set_location_handler(usr_client: impl UserServiceClient, user: &teloxide::types::User) -> anyhow::Result<AnswerMessage> {
-    if usr_client.get(user.id).await?.is_none() {
-        return register_user(usr_client, user).await
-    }
-
-    let lang_code = &ensure_lang_code(user.id, user.language_code.clone(), &usr_client.into()).await;
-    let msg_text = t!("set-option.location.message.text", locale = lang_code);
-    let btn_text = t!("set-option.location.message.button", locale = lang_code);
-
-    let keyboard = KeyboardMarkup::new(vec![vec![
-        KeyboardButton::new(btn_text).request(ButtonRequest::Location)
-    ]]);
-    Ok(AnswerMessage::TextWithMarkup(msg_text, keyboard.into()))
 }
 
 async fn register_user(client: impl UserServiceClient, user: &teloxide::types::User) -> anyhow::Result<AnswerMessage> {

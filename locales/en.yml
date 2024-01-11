@@ -20,11 +20,8 @@ set-option:
     message:
       text: "Send me your location, please"
       button: "Send the location"
-    confirmation:
-      text: "Do you really want to set your location to a point above?"
-      button: "Yes, I do!"
-      remove-keyboard: "_Removing the reply keyboard…_"
     success: "Your location has been saved successfully!"
+    remove-keyboard: "_Removing the reply keyboard…_"
 error:
   old-message: "The message is too old :("
   service:
@@ -32,3 +29,6 @@ error:
       disabled: "Sorry\\. This command is temporary unavailable\\."
   callbacks:
     another-person: "This button is intended not for you!"
+dialogue:
+  cancel:
+    button: "Cancel"
