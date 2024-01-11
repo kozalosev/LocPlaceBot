@@ -1,10 +1,12 @@
-use std::str::FromStr;
 use anyhow::anyhow;
+use derive_more::Constructor;
 use mobc_redis::{redis, RedisConnectionManager};
 use teloxide::types::{CallbackQuery, InlineQuery, Message, UserId};
+use crate::env::resolve_optional_env;
 
 const REDIS_KEY_PREFIX: &str = "rate-limiter.";
 
+#[derive(Constructor, Clone)]
 pub struct RequestsLimiter {
     pool: mobc::Pool<RedisConnectionManager>,
     max_allowed: i32,
@@ -12,22 +14,10 @@ pub struct RequestsLimiter {
 }
 
 impl RequestsLimiter {
-    pub fn new(client: redis::Client, max_allowed: i32, timeframe: usize) -> Self {
-        let manager = RedisConnectionManager::new(client);
-        let pool = mobc::Pool::new(manager);
-        RequestsLimiter { pool, max_allowed, timeframe }
-    }
-
-    pub fn from_env() -> Self {
-        let host: String = resolve_mandatory_env("REDIS_HOST");
-        let port: u16 = resolve_mandatory_env("REDIS_PORT");
-        let password: String = resolve_mandatory_env("REDIS_PASSWORD");
+    pub fn from_env(pool: mobc::Pool<RedisConnectionManager>) -> Self {
         let max_allowed = resolve_optional_env("REQUESTS_LIMITER_MAX_ALLOWED", 10);
         let timeframe = resolve_optional_env("REQUESTS_LIMITER_TIMEFRAME", 60);
-
-        let client = redis::Client::open(format!("redis://:{password}@{host}:{port}/"))
-            .expect("Cannot connect to Redis");
-        Self::new(client, max_allowed, timeframe)
+        Self::new(pool, max_allowed, timeframe)
     }
 
     pub async fn is_req_allowed(&self,  entity: &impl GetUserId) -> bool {
@@ -97,27 +87,4 @@ impl GetUserId for InlineQuery {
     }
 }
 
-fn resolve_mandatory_env<T: FromStr + ToString>(key: &str) -> T {
-    let val = std::env::var(key)
-        .expect(format!("{key} is not set but mandatory!").as_str());
-    let val = T::from_str(val.as_str())
-        .ok().expect(format!("Couldn't convert {key} for some reason").as_str());
-    if key.to_lowercase().contains("password") {
-        log::info!("{} is set to ***", key);
-    } else {
-        log::info!("{} is set to {}", key, val.to_string());
-    }
-    val
-}
 
-fn resolve_optional_env<T: FromStr + ToString>(key: &str, default: T) -> T {
-    let val = std::env::var(key)
-        .unwrap_or(default.to_string())
-        .parse::<T>()
-        .unwrap_or_else(|_| {
-            log::error!("Invalid value of {key}");
-            default
-        });
-    log::info!("{} is set to {}", key, val.to_string());
-    val
-}

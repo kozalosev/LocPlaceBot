@@ -1,12 +1,15 @@
 #[cfg(test)]
 pub mod mock;
+mod cache;
+mod uid;
 
 use std::net::SocketAddr;
 use std::sync::Arc;
 use async_trait::async_trait;
-use chashmap::CHashMap;
 use derive_more::{Constructor, Display, From};
+use mobc_redis::RedisConnectionManager;
 use once_cell::sync::Lazy;
+use redis_derive::{FromRedisValue, ToRedisArgs};
 use serde_json::json;
 use teloxide::types::{MessageId, UserId};
 use tonic::{Code, Response};
@@ -14,6 +17,8 @@ use tonic::transport::Channel;
 use generated::user_service_client::UserServiceClient as GrpcClient;
 use generated::update_user_request::Target;
 use generated::*;
+use crate::users::cache::RedisCache;
+use crate::users::uid::UID;
 
 pub mod generated {
     tonic::include_proto!("user_service");
@@ -65,7 +70,8 @@ impl Into<serde_json::Value> for Consent {
     }
 }
 
-#[derive(Clone)]
+// TODO: do we need another simpler type for serialization?
+#[derive(Clone, ToRedisArgs, FromRedisValue)]
 struct CachedUser {
     user: Option<User>,
     updated_at: tokio::time::Instant,
@@ -141,22 +147,22 @@ impl <T: UserServiceClient> UserService<T> {
 #[derive(Clone)]
 pub struct UserServiceClientGrpc {
     inner: GrpcClient<Channel>,
-    cache: Arc<CHashMap<UserId, CachedUser>>,
+    cache: Arc<RedisCache<UID, CachedUser, RedisConnectionManager>>,
     service_descr: Service,
 }
 
 impl UserServiceClientGrpc {
-    pub async fn connect(addr: impl Into<SocketAddr>, hello: Hello) -> Result<Self, tonic::transport::Error> {
+    pub async fn connect(addr: impl Into<SocketAddr>, hello: Hello, redis_pool: mobc::Pool<RedisConnectionManager>) -> Result<Self, tonic::transport::Error> {
         Ok(Self {
             inner: GrpcClient::connect(format!("http://{}", addr.into())).await?,
-            cache: Arc::new(Default::default()),
+            cache: Arc::new(RedisCache::new(redis_pool, "user-service-client-cache")),
             service_descr: hello.into(),
         })
     }
 
-    pub async fn with_addr_from_env(hello: Hello) -> anyhow::Result<Self> {
+    pub async fn with_addr_from_env(hello: Hello, redis_pool: mobc::Pool<RedisConnectionManager>) -> anyhow::Result<Self> {
         let addr: SocketAddr = std::env::var(ENV_GRPC_ADDR_USER_SERVICE)?.parse()?;
-        let client = Self::connect(addr, hello).await?;
+        let client = Self::connect(addr, hello, redis_pool).await?;
         Ok(client)
     }
 
@@ -165,13 +171,20 @@ impl UserServiceClientGrpc {
             .map(|u| u.id)
             .ok_or(tonic::Status::not_found("user not found"))
     }
+
+    async fn delete_from_cache(&self, uid: UserId) -> Result<(), tonic::Status> {
+        self.cache.delete(uid.into()).await
+            .map_err(|e| tonic::Status::internal(e.to_string()))?;
+        Ok(())
+    }
 }
 
 #[async_trait]
 impl UserServiceClient for UserServiceClientGrpc {
     async fn get(&self, uid: UserId) -> Result<Option<User>, tonic::Status> {
         let cached_user = self.cache
-            .get(&uid)
+            .get(uid.into()).await
+            .map_err(|e| tonic::Status::internal(e.to_string()))?
             .filter(|usr| {
                 let time_difference = tokio::time::Instant::now() - usr.updated_at;
                 time_difference.as_secs() <= *USER_CACHE_TIME_SECS
@@ -220,12 +233,12 @@ impl UserServiceClient for UserServiceClientGrpc {
             RegistrationStatus::Unspecified => Err(Unsupported::RegistrationStatus(0))?,
             RegistrationStatus::Created => {
                 log::info!("a user with ID {uid} was registered successfully!");
-                self.cache.remove(&uid);
+                self.delete_from_cache(uid).await?;
                 Ok(response.id)
             },
             RegistrationStatus::AlreadyPresent => {
                 log::warn!("attempt to register a user with ID {uid} once again");
-                self.cache.remove(&uid);
+                self.delete_from_cache(uid).await?;
                 Ok(response.id)
             }
         }
@@ -237,7 +250,7 @@ impl UserServiceClient for UserServiceClientGrpc {
             id,
             target: Some(Target::Language(code.to_owned())),
         }).await?;
-        self.cache.remove(&uid);
+        self.delete_from_cache(uid).await?;
         Ok(())
     }
 
@@ -248,7 +261,7 @@ impl UserServiceClient for UserServiceClientGrpc {
             id,
             target: Some(Target::Location(location)),
         }).await?;
-        self.cache.remove(&uid);
+        self.delete_from_cache(uid).await?;
         Ok(())
     }
 }

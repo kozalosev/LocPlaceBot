@@ -1400,10 +1400,12 @@ dependencies = [
  "prost-types",
  "prost-wkt-types",
  "redis 0.23.3",
+ "redis-derive",
  "regex",
  "reqwest",
  "reqwest-middleware",
  "rust-i18n",
+ "serde",
  "serde_json",
  "sha256",
  "strum",
@@ -2208,6 +2210,26 @@ dependencies = [
 
 [[package]]
 name = "redis"
+version = "0.21.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "152f3863635cbb76b73bc247845781098302c6c9ad2060e1a9a7de56840346b6"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "combine",
+ "futures-util",
+ "itoa",
+ "percent-encoding",
+ "pin-project-lite",
+ "ryu",
+ "sha1",
+ "tokio",
+ "tokio-util",
+ "url",
+]
+
+[[package]]
+name = "redis"
 version = "0.22.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "aa8455fa3621f6b41c514946de66ea0531f57ca017b2e6c7cc368035ea5b46df"
@@ -2249,6 +2271,18 @@ dependencies = [
  "tokio-retry",
  "tokio-util",
  "url",
+]
+
+[[package]]
+name = "redis-derive"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dd54aa405add884ec36f7eb40d6d09d5be4ea6b69655492dd5764bc7d698ef12"
+dependencies = [
+ "heck",
+ "quote",
+ "redis 0.21.7",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -2635,6 +2669,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "sha1"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c1da05c97445caa12d05e848c4a4fcbbea29e748ac28f7e80e9b010392063770"
+dependencies = [
+ "sha1_smol",
+]
+
+[[package]]
 name = "sha1_smol"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2861,6 +2904,7 @@ dependencies = [
  "mime",
  "pin-project",
  "rand 0.8.5",
+ "redis 0.21.7",
  "serde",
  "serde_json",
  "serde_with_macros",

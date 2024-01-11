@@ -19,9 +19,10 @@ use teloxide::dispatching::dialogue::GetChatId;
 use teloxide::types::{Me, ReplyMarkup};
 use teloxide::types::ParseMode::MarkdownV2;
 use teloxide::utils::command::BotCommands;
-use crate::handlers::limiter::RequestsLimiter;
 use crate::handlers::options::LanguageCode;
 use crate::users::{UserService, UserServiceClient, UserServiceClientGrpc};
+
+pub use limiter::RequestsLimiter;
 
 #[derive(BotCommands, Clone)]
 #[command(rename_rule = "lowercase")]
@@ -52,7 +53,6 @@ static FINDER: Lazy<SearchChain> = Lazy::new(|| {
         google,
     ])
 });
-static INLINE_REQUESTS_LIMITER: Lazy<RequestsLimiter> = Lazy::new(|| RequestsLimiter::from_env());
 
 pub fn preload_env_vars() {
     google::preload_env_vars();
@@ -60,11 +60,10 @@ pub fn preload_env_vars() {
 
     let _ = *COORDS_REGEXP;
     let _ = *FINDER;
-    let _ = *INLINE_REQUESTS_LIMITER;
 }
 
-pub async fn inline_handler(bot: Bot, q: InlineQuery, usr_client: UserService<UserServiceClientGrpc>) -> HandlerResult {
-    if q.query.is_empty() || rate_limit_exceeded(&q).await {
+pub async fn inline_handler(bot: Bot, q: InlineQuery, usr_client: UserService<UserServiceClientGrpc>, limiter: RequestsLimiter) -> HandlerResult {
+    if q.query.is_empty() || rate_limit_exceeded(limiter, &q).await {
         bot.answer_inline_query(q.id, vec![]).await?;
         return Ok(());
     }
@@ -78,8 +77,8 @@ pub async fn inline_handler(bot: Bot, q: InlineQuery, usr_client: UserService<Us
     senders::send_locations_inline(bot, q.id, lang_code, locations).await
 }
 
-async fn rate_limit_exceeded(q: &InlineQuery) -> bool {
-    let forbidden = !INLINE_REQUESTS_LIMITER.is_req_allowed(q).await;
+async fn rate_limit_exceeded(limiter: RequestsLimiter, q: &InlineQuery) -> bool {
+    let forbidden = !limiter.is_req_allowed(q).await;
     if forbidden {
         log::info!("Requests limit was exceeded for {}", q.from.id);
         metrics::INLINE_COUNTER.inc_forbidden();

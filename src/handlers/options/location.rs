@@ -1,5 +1,6 @@
 use derive_more::From;
 use rust_i18n::t;
+use serde::{Deserialize, Serialize};
 use teloxide::Bot;
 use teloxide::dispatching::dialogue::InMemStorage;
 use teloxide::macros::BotCommands;
@@ -22,7 +23,7 @@ pub enum Commands {
     SetLoc,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Serialize, Deserialize)]
 pub enum LocationState {
     #[default]
     Start,
