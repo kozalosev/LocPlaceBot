@@ -6,35 +6,35 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-teloxide = { version = "0.12", features = ["macros", "webhooks-axum"] }
+teloxide = { version = "0.12", default-features = false, features = ["macros", "webhooks-axum", "rustls", "ctrlc_handler"] }
 log = "0.4"
 pretty_env_logger = "0.5.0"
-tokio = { version =  "1.8", features = ["rt-multi-thread", "macros"] }
-reqwest = "0.11.17"
-regex = "1.8.1"
-once_cell = "1.17.1"
-serde_json = "1.0.96"
-axum = "0.6.18"
-axum-prometheus = "0.3.3"
-hyper = "1.0.0-rc.3"
-futures = "0.3.28"
+tokio = { version =  "1.35.1", default-features = false, features = ["rt-multi-thread", "macros"] }
+reqwest = { version = "0.11.23", default-features = false, features = ["rustls-tls"] }
+regex = "1.10.2"
+once_cell = "1.19.0"
+serde_json = "1.0.111"
+axum = "0.6.20"
+axum-prometheus = "0.3.4"
+hyper = "1.1.0"
+futures = "0.3.30"
 tonic = "0.10.2"
 prost = "0.12.3"
 prost-types = "0.12.3"
 prost-wkt-types = "0.5.0"
 prometheus = "0.13.3"
-uuid = { version = "1.3.3", features = ["v4", "fast-rng"] }
-strum = "0.24.1"
-strum_macros = "0.24.3"
-rust-i18n = "2.1.0"
-async-trait = "0.1.68"
+uuid = { version = "1.6.1", features = ["v4", "fast-rng"] }
+strum = "0.25.0"
+strum_macros = "0.25.3"
+rust-i18n = "2.3.0"
+async-trait = "0.1.77"
 http-cache = { version = "0.11.0", default-features = false, features = ["manager-moka"] }
 http-cache-reqwest = { version = "0.9.0", default-features = false, features = ["manager-moka"] }
-reqwest-middleware = "0.2.2"
-anyhow = "1.0.71"
-redis = { version = "0.23.3", features = ["ahash", "tokio-comp", "connection-manager"] }
-mobc = "0.8.1"
-mobc-redis = "0.8.0"
+reqwest-middleware = "0.2.4"
+anyhow = "1.0.79"
+redis = { version = "0.24.0", features = ["ahash", "tokio-comp", "connection-manager"] }
+mobc = "0.8.3"
+mobc-redis = "0.8.2"
 chashmap = "2.2.2"
 derive_more = { version = "1.0.0-beta.6", features = ["display", "from", "constructor", "error"] }
 thiserror = "1.0.56"
