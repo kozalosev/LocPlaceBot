@@ -3,7 +3,7 @@ use teloxide::Bot;
 use teloxide::payloads::{AnswerCallbackQuerySetters, EditMessageTextSetters};
 use teloxide::prelude::{CallbackQuery, UserId};
 use teloxide::requests::Requester;
-use teloxide::types::ParseMode::MarkdownV2;
+use teloxide::types::ParseMode::Html;
 use crate::eula;
 use crate::handlers::HandlerResult;
 use crate::handlers::options::build_agreement_text;
@@ -68,11 +68,11 @@ pub async fn callback_handler(bot: Bot, query: CallbackQuery, usr_client: UserSe
             let name = get_full_name(&query.from);
             ctx.usr_client.register(query.from.id, name.clone(), consent).await?;
 
-            let name = teloxide::utils::markdown::escape(&name);
+            let name = teloxide::utils::html::escape(&name);
             let new_text = format!("{}\n\n{}", build_agreement_text(&ctx.lang_code),
                                    t!("registration.consent.appendix", locale = &ctx.lang_code, username = name));
             bot.edit_message_text(msg.chat.id, msg.id, new_text)
-                .parse_mode(MarkdownV2)
+                .parse_mode(Html)
                 .await?;
             ctx.answer.show_alert(false)
                 .text(t!("registration.consent.ok", locale = &ctx.lang_code))

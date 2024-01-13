@@ -17,7 +17,7 @@ use crate::utils::ensure_lang_code;
 use teloxide::prelude::*;
 use teloxide::dispatching::dialogue::GetChatId;
 use teloxide::types::{Me, ReplyMarkup};
-use teloxide::types::ParseMode::MarkdownV2;
+use teloxide::types::ParseMode::Html;
 use teloxide::utils::command::BotCommands;
 use crate::handlers::limiter::RequestsLimiter;
 use crate::handlers::options::LanguageCode;
@@ -203,7 +203,7 @@ async fn process_answer_message(bot: Bot, chat_id: ChatId, answer: AnswerMessage
     };
 
     let mut req = bot.send_message(chat_id, text)
-        .parse_mode(MarkdownV2);
+        .parse_mode(Html);
     req.reply_markup = keyboard;
     req.await?;
     Ok(())

@@ -7,26 +7,26 @@ title:
     empty: "Nothing was found :("
 registration:
   message:
-    text: "Oops\\! It seems you don't have a unified account used throughout the whole ecosystem of [SadBot\\.Dev bots](https://t.me/kozalo_blog/7) network\\. To create a new one and use this command, you have to accept the following user agreement and allow us to store your settings and preferences\\."
+    text: "Oops! It seems you don't have a unified account used throughout the whole ecosystem of [SadBot.Dev bots](https://t.me/kozalo_blog/7) network. To create a new one and use this command, you have to accept the following user agreement and allow us to store your settings and preferences."
     button: "Accept"
   consent:
     ok: "Your account has been created successfully!"
-    appendix: "_Accepted by the *%{username}*_\n\nThank you\\! Now you can invoke the command again\\."
+    appendix: "<i>Accepted by the <b>%{username}</b></i>\n\nThank you! Now you can invoke the command again."
 set-option:
   language:
     success: "👌🏼👍🏼"
-    unsupported: "Unfortunately, this language is not supported yet\\. It would be very nice if you contribute to our project and help us to [translate](https://github.com/kozalosev/LocPlaceBot/blob/main/locales/en.yml) the bot to your language\\."
+    unsupported: "Unfortunately, this language is not supported yet. It would be very nice if you contribute to our project and help us to [translate](https://github.com/kozalosev/LocPlaceBot/blob/main/locales/en.yml) the bot to your language."
   location:
     message:
       text: "Send me your location, please"
       button: "Send the location"
     success: "Your location has been saved successfully!"
-    remove-keyboard: "_Removing the reply keyboard…_"
+    remove-keyboard: "<i>Removing the reply keyboard…</i>"
 error:
   old-message: "The message is too old :("
   service:
     user:
-      disabled: "Sorry\\. This command is temporary unavailable\\."
+      disabled: "Sorry. This command is temporary unavailable."
   callbacks:
     another-person: "This button is intended not for you!"
 dialogue:

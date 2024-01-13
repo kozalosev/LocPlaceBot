@@ -7,7 +7,7 @@ use teloxide::payloads::{SendMessageSetters};
 use teloxide::prelude::Dialogue;
 use teloxide::requests::Requester;
 use teloxide::types::{ButtonRequest, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, KeyboardMarkup, KeyboardRemove, Message, ReplyMarkup, User};
-use teloxide::types::ParseMode::MarkdownV2;
+use teloxide::types::ParseMode::Html;
 use crate::handlers::{AnswerMessage, HandlerResult, process_answer_message};
 use crate::handlers::options::callback::CancellationCallbackData;
 use crate::handlers::options::register_user;
@@ -53,7 +53,7 @@ pub async fn start(bot: Bot, dialogue: LocationDialogue, msg: Message, usr_clien
     ]]);
 
     bot.send_message(msg.chat.id, msg_text)
-        .parse_mode(MarkdownV2)
+        .parse_mode(Html)
         .reply_markup(keyboard)
         .await?;
 

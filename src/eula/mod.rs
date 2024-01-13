@@ -1,7 +1,7 @@
 use once_cell::sync::Lazy;
 
-static  EN_EULA_TEXT: &str = include_str!("en.md");
-static  RU_EULA_TEXT: &str = include_str!("ru.md");
+static  EN_EULA_TEXT: &str = include_str!("en.html");
+static  RU_EULA_TEXT: &str = include_str!("ru.html");
 
 static EN_EULA_HASH: Lazy<String> = Lazy::new(|| sha256::digest(EN_EULA_TEXT));
 static RU_EULA_HASH: Lazy<String> = Lazy::new(|| sha256::digest(RU_EULA_TEXT));

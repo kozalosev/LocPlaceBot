@@ -6,7 +6,7 @@ use teloxide::dispatching::dialogue::InMemStorage;
 use teloxide::payloads::{AnswerCallbackQuery, AnswerCallbackQuerySetters, SendMessageSetters};
 use teloxide::prelude::{CallbackQuery, Dialogue, Requester, UserId};
 use teloxide::requests::JsonRequest;
-use teloxide::types::ParseMode::MarkdownV2;
+use teloxide::types::ParseMode::Html;
 use teloxide::types::{KeyboardRemove, ReplyMarkup};
 use crate::handlers::HandlerResult;
 use crate::users::{UserService, UserServiceClient, UserServiceClientGrpc};
@@ -115,7 +115,7 @@ where
     if let Some(chat_id) = maybe_chat_id {
         let placeholder = t!("set-option.location.remove-keyboard", locale = &ctx.lang_code);
         let service_msg = bot.send_message(chat_id, placeholder)
-            .parse_mode(MarkdownV2)
+            .parse_mode(Html)
             .reply_markup(ReplyMarkup::KeyboardRemove(KeyboardRemove::default()))
             .await?;
         bot.delete_message(chat_id, service_msg.id).await?;
