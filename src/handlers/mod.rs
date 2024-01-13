@@ -13,7 +13,7 @@ use once_cell::sync::Lazy;
 use rust_i18n::t;
 use crate::{help, metrics};
 use crate::loc::{Location, SearchChain, google, yandex, osm, finder};
-use crate::utils::ensure_lang_code;
+use crate::utils::{ensure_lang_code, try_determine_location};
 use teloxide::prelude::*;
 use teloxide::dispatching::dialogue::GetChatId;
 use teloxide::types::{Me, ReplyMarkup};
@@ -73,7 +73,8 @@ pub async fn inline_handler(bot: Bot, q: InlineQuery, usr_client: UserService<Us
     metrics::INLINE_COUNTER.inc_allowed();
 
     let lang_code = &ensure_lang_code(q.from.id, q.from.language_code.clone(), &usr_client).await;
-    let locations = resolve_locations(q.query, lang_code).await?;
+    let location = try_determine_location(q.from.id, &usr_client).await;
+    let locations = resolve_locations(q.query, lang_code, location).await?;
 
     senders::send_locations_inline(bot, q.id, lang_code, locations).await
 }
@@ -174,19 +175,20 @@ async fn cmd_loc_handler(bot: Bot, msg: Message, usr_client: UserService<impl Us
 
     let from = msg.from().ok_or("no from")?;
     let lang_code = &ensure_lang_code(from.id, from.language_code.clone(), &usr_client).await;
-    let locations = resolve_locations(text, lang_code).await?;
+    let location = try_determine_location(from.id, &usr_client).await;
+    let locations = resolve_locations(text, lang_code, location).await?;
     senders::send_locations_as_messages(bot, msg.chat.id, locations, lang_code).await?;
     Ok(())
 }
 
-async fn resolve_locations(query: String, lang_code: &str) -> Result<Vec<Location>, Box<dyn std::error::Error + Send + Sync>> {
+async fn resolve_locations(query: String, lang_code: &str, location: Option<(f64, f64)>) -> Result<Vec<Location>, Box<dyn std::error::Error + Send + Sync>> {
     let query = query.as_str();
     let locations = if let Some(coords) = COORDS_REGEXP.captures(query) {
         let lat: f64 = coords["latitude"].parse()?;
         let long: f64 = coords["longitude"].parse()?;
         vec![Location::new(lat, long)]
     } else {
-        FINDER.find(query, lang_code).await
+        FINDER.find(query, lang_code, location).await
     };
     Ok(locations)
 }

@@ -24,6 +24,7 @@ services:
       - GRPC_ADDR_USER_SERVICE
       - USER_CACHE_TIME_SECS
       - CACHE_CLEAN_UP_INTERVAL_SECS
+      - SEARCH_RADIUS_METERS
     expose:
       - 8080
     networks:

@@ -4,12 +4,12 @@ use once_cell::sync::Lazy;
 use reqwest_middleware::ClientWithMiddleware;
 use strum_macros::EnumString;
 use super::cache::WithCachedResponseCounters;
-use super::{cache, Location, LocFinder, LocResult};
+use super::{cache, Location, LocFinder, LocResult, SEARCH_RADIUS, SearchParams};
 use crate::metrics;
 
 const FINDER_ENV_API_KEY: &str = "GOOGLE_MAPS_API_KEY";
 
-pub static GAPI_MODE: Lazy<GoogleAPIMode> = Lazy::new(|| {
+static GAPI_MODE: Lazy<GoogleAPIMode> = Lazy::new(|| {
     let val = std::env::var("GAPI_MODE").expect("GAPI_MODE must be set!");
     log::info!("GAPI_MODE is {val}");
     GoogleAPIMode::from_str(val.as_str()).expect("Invalid value of GAPI_MODE")
@@ -67,27 +67,30 @@ impl GoogleLocFinder {
         Self::init(api_key.as_str())
     }
 
-    pub async fn find(&self, address: &str, lang_code: &str) -> LocResult {
-        let mut results = self.find_geo(address, lang_code).await?;
+    async fn find(&self, address: &str, params: SearchParams<'_>) -> LocResult {
+        let mut results = self.find_geo(address, params).await?;
         if results.is_empty() {
-            results = self.find_place(address, lang_code).await?;
+            results = self.find_place(address, params).await?;
         }
         Ok(results)
     }
 
-    pub async fn find_more(&self, address: &str, lang_code: &str) -> LocResult {
-        let mut results = self.find_geo(address, lang_code).await?;
+    async fn find_more(&self, address: &str, params: SearchParams<'_>) -> LocResult {
+        let mut results = self.find_geo(address, params).await?;
         if results.is_empty() {
-            results = self.find_text(address, lang_code).await?;
+            results = self.find_text(address, params).await?;
         }
         Ok(results)
     }
 
-    pub async fn find_geo(&self, address: &str, lang_code: &str) -> LocResult {
+    async fn find_geo(&self, address: &str, params: SearchParams<'_>) -> LocResult {
         self.geocode_req_counter.inc();
-
-        let url = format!("https://maps.googleapis.com/maps/api/geocode/json?key={}&address={}&language={}&region={}",
-                          self.api_key, address, lang_code, lang_code);
+        let bounds_part = params.location
+            .map(|loc| get_bounds(loc, f64::from(*SEARCH_RADIUS)))
+            .map(|(p1, p2)| format!("&bounds={},{}%7C{},{}", p1.0, p1.1, p2.0, p2.1))
+            .unwrap_or_default();
+        let url = format!("https://maps.googleapis.com/maps/api/geocode/json?key={}&address={}&language={}&region={}{bounds_part}",
+                          self.api_key, address, params.lang_code, params.lang_code);
         let resp = self.client.get(url).send().await?;
         self.inc_resp_counter(&resp);
 
@@ -100,11 +103,13 @@ impl GoogleLocFinder {
         Ok(results)
     }
 
-    pub async fn find_place(&self, address: &str, lang_code: &str) -> LocResult {
+    async fn find_place(&self, address: &str, params: SearchParams<'_>) -> LocResult {
         self.place_req_counter.inc();
-
-        let url = format!("https://maps.googleapis.com/maps/api/place/findplacefromtext/json?key={}&input={}&inputtype=textquery&language={}&fields=formatted_address,geometry,name",
-                          self.api_key, address, lang_code);
+        let location_part = params.location
+            .map(|(lat, lng)| format!("&locationbias=circle:{}@{lat},{lng}", *SEARCH_RADIUS))
+            .unwrap_or_default();
+        let url = format!("https://maps.googleapis.com/maps/api/place/findplacefromtext/json?key={}&input={}&inputtype=textquery&language={}&fields=formatted_address,geometry,name{location_part}",
+                          self.api_key, address, params.lang_code);
         let resp = self.client.get(url).send().await?;
         self.inc_resp_counter(&resp);
 
@@ -118,11 +123,13 @@ impl GoogleLocFinder {
         Ok(results)
     }
 
-    pub async fn find_text(&self, address: &str, lang_code: &str) -> LocResult {
+    async fn find_text(&self, address: &str, params: SearchParams<'_>) -> LocResult {
         self.text_req_counter.inc();
-
-        let url = format!("https://maps.googleapis.com/maps/api/place/textsearch/json?key={}&query={}&language={}&region={}",
-                          self.api_key, address, lang_code, lang_code);
+        let location_part = params.location
+            .map(|(lat, lng)| format!("&location={lat},{lng}"))
+            .unwrap_or_default();
+        let url = format!("https://maps.googleapis.com/maps/api/place/textsearch/json?key={}&query={}&language={}&region={}{location_part}",
+                          self.api_key, address, params.lang_code, params.lang_code);
         let resp = self.client.get(url).send().await?;
         self.inc_resp_counter(&resp);
 
@@ -139,12 +146,13 @@ impl GoogleLocFinder {
 
 #[async_trait]
 impl LocFinder for GoogleLocFinder {
-    async fn find(&self, query: &str, lang_code: &str) -> LocResult {
+    async fn find(&self, query: &str, lang_code: &str, location: Option<(f64, f64)>) -> LocResult {
+        let params = SearchParams { lang_code, location };
         match *GAPI_MODE {
-            GoogleAPIMode::Place => self.find_place(query, lang_code).await,
-            GoogleAPIMode::Text => self.find_text(query, lang_code).await,
-            GoogleAPIMode::GeoPlace => self.find(query, lang_code).await,
-            GoogleAPIMode::GeoText => self.find_more(query, lang_code).await,
+            GoogleAPIMode::Place => self.find_place(query, params).await,
+            GoogleAPIMode::Text => self.find_text(query, params).await,
+            GoogleAPIMode::GeoPlace => self.find(query, params).await,
+            GoogleAPIMode::GeoText => self.find_more(query, params).await,
         }
     }
 }
@@ -169,4 +177,13 @@ fn map_resp(v: &serde_json::Value) -> Option<Location> {
     Some(Location {
         address, latitude, longitude
     })
+}
+
+fn get_bounds(center: (f64, f64), radius: f64) -> ((f64, f64), (f64, f64)) {
+    let (cx, cy) = center;
+
+    let bottom_left = (cx - radius, cy - radius);
+    let top_right = (cx + radius, cy + radius);
+
+    (bottom_left, top_right)
 }
