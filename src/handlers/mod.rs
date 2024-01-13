@@ -26,9 +26,12 @@ use crate::users::{UserService, UserServiceClient, UserServiceClientGrpc};
 #[derive(BotCommands, Clone)]
 #[command(rename_rule = "lowercase")]
 pub enum Command {
+    #[command(description = "help")]
     Help,
     Start,
+    #[command(description = "loc")]
     Loc,
+    #[command(description = "set.language")]
     SetLanguage(LanguageCode),
     SetLang(LanguageCode),
 }

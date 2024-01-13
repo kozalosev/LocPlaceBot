@@ -5,9 +5,15 @@ title:
   address-list:
     has-data: "Here is a list of addresses I found:"
     empty: "Nothing was found :("
+cmd-description:
+  help: "print a help message"
+  loc: "to search in a group chats"
+  set:
+    language: "change the language"
+    location: "clarify your location for more relevant results"
 registration:
   message:
-    text: "Oops! It seems you don't have a unified account used throughout the whole ecosystem of [SadBot.Dev bots](https://t.me/kozalo_blog/7) network. To create a new one and use this command, you have to accept the following user agreement and allow us to store your settings and preferences."
+    text: "Oops! It seems you don't have a unified account used throughout the whole ecosystem of <a href=\"https://t.me/kozalo_blog/7\">SadBot.Dev bots</a> network. To create a new one and use this command, you have to accept the following user agreement and allow us to store your settings and preferences."
     button: "Accept"
   consent:
     ok: "Your account has been created successfully!"

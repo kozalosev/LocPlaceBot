@@ -7,11 +7,13 @@ mod help;
 mod utils;
 mod users;
 mod eula;
+mod commands;
 
 use std::env::VarError;
 use std::net::SocketAddr;
 use std::time::Duration;
 use axum::Router;
+use futures::future::join_all;
 use reqwest::Url;
 use rust_i18n::i18n;
 use teloxide::dispatching::dialogue::InMemStorage;
@@ -25,7 +27,7 @@ use crate::users::{Hello, UserService, UserServiceClientGrpc};
 const ENV_WEBHOOK_URL: &str = "WEBHOOK_URL";
 const ENV_CACHE_CLEAN_UP_INTERVAL_SECS: &str = "CACHE_CLEAN_UP_INTERVAL_SECS";
 
-i18n!();    // load localizations with default parameters
+i18n!(fallback = "en");    // load localizations with default parameters
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -47,6 +49,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let bot = Bot::from_env();
     bot.delete_webhook().await?;
+
+    let set_my_commands_requests = _rust_i18n_available_locales()
+        .into_iter()
+        .map(|locale| commands::set_my_commands(&bot, locale));
+    let set_my_commands_failed = join_all(set_my_commands_requests)
+        .await
+        .into_iter()
+        .any(|res| res.is_err());
+    if set_my_commands_failed {
+        Err("couldn't set the bot's commands")?
+    } else {
+        log::info!("The commands has been updated successfully!")
+    }
 
     let webhook_url: Option<Url> = match std::env::var(ENV_WEBHOOK_URL) {
         Ok(env_url) if env_url.len() > 0 => Some(env_url.parse()?),
