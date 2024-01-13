@@ -3,3 +3,9 @@ services:
   redis:
     ports:
       - "${REDIS_PORT}:${REDIS_PORT}"
+  postgres:
+    ports:
+      - "${POSTGRES_PORT}:${POSTGRES_PORT}"
+  user-service:
+    ports:
+      - "8090:8090"

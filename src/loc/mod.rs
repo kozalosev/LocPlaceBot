@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
 
 pub mod google;
 pub mod yandex;
@@ -11,6 +12,15 @@ pub mod cache;
 mod test;
 
 const DISABLE_ENV_PREFIX: &str = "DISABLE_FINDER_";
+
+static SEARCH_RADIUS: Lazy<f64> = Lazy::new(|| {
+    let val: u32 = std::env::var("SEARCH_RADIUS_METERS")
+        .ok()
+        .and_then(|v| v.parse().map_err(|e| log::error!("couldn't parse SEARCH_RADIUS_METERS: {e}")).ok())
+        .unwrap_or(1000);
+    log::info!("SEARCH_RADIUS_METERS is {val}");
+    f64::from(val) / 10_000.0   // 6 digits after a comma have accuracy in 0.1 m, so we need to shift the dot at 5 digits
+});
 
 #[derive(Debug, Clone)]
 pub struct Location {
@@ -42,7 +52,7 @@ pub type DynLocFinder = Arc<dyn LocFinder>;
 
 #[async_trait]
 pub trait LocFinder : Sync + Send {
-    async fn find(&self, query: &str, lang_code: &str) -> LocResult;
+    async fn find(&self, query: &str, lang_code: &str, location: Option<(f64, f64)>) -> LocResult;
 }
 
 pub struct SearchChain {
@@ -72,11 +82,11 @@ impl SearchChain {
         self
     }
 
-    pub async fn find(&self, query: &str, lang_code: &str) -> Vec<Location> {
+    pub async fn find(&self, query: &str, lang_code: &str, location: Option<(f64, f64)>) -> Vec<Location> {
         let futures = self.regional_finders.get(lang_code)
             .unwrap_or(&self.global_finders)
             .iter()
-            .map(|f| f.find(query, lang_code));
+            .map(|f| f.find(query, lang_code, location));
 
         for fut in futures {
             match fut.await {
@@ -119,4 +129,20 @@ impl LocFinderChainWrapper {
             Some(self.finder)
         }
     }
+}
+
+#[derive(Copy, Clone)]
+struct SearchParams<'a> {
+    lang_code: &'a str,
+    location: Option<(f64, f64)>
+}
+
+// Thanks to ChatGPT for this snippet of code!
+fn get_bounds(center: (f64, f64), radius: f64) -> ((f64, f64), (f64, f64)) {
+    let (cx, cy) = center;
+
+    let top_left = (cx - radius, cy + radius);
+    let bottom_right = (cx + radius, cy - radius);
+
+    (top_left, bottom_right)
 }

@@ -5,7 +5,7 @@ use once_cell::sync::Lazy;
 use reqwest_middleware::ClientWithMiddleware;
 use strum_macros::EnumString;
 use super::cache::WithCachedResponseCounters;
-use super::{cache, Location, LocFinder, LocResult};
+use super::{cache, get_bounds, Location, LocFinder, LocResult, SEARCH_RADIUS, SearchParams};
 use crate::metrics;
 
 const GEOCODER_ENV_API_KEY: &str = "YANDEX_MAPS_GEOCODER_API_KEY";
@@ -76,19 +76,19 @@ impl YandexLocFinder {
         Self::init(geocode_api_key, places_api_key)
     }
 
-    pub async fn find_geo_place(&self, address: &str, lang_code: &str) -> LocResult {
-        let mut results = self.find_geo(address, lang_code).await?;
+    async fn find_geo_place(&self, address: &str, params: SearchParams<'_>) -> LocResult {
+        let mut results = self.find_geo(address, params).await?;
         if results.is_empty() {
-            results = self.find_place(address, lang_code).await?;
+            results = self.find_place(address, params).await?;
         }
         Ok(results)
     }
 
-    pub async fn find_geo(&self, address: &str, lang_code: &str) -> LocResult {
+    async fn find_geo(&self, address: &str, params: SearchParams<'_>) -> LocResult {
         self.geocode_req_counter.inc();
 
-        let url = format!("https://geocode-maps.yandex.ru/1.x?apikey={}&lang={}&geocode={}&format=json",
-                          self.geocode_api_key, lang_code, address);
+        let url = format!("https://geocode-maps.yandex.ru/1.x?apikey={}&lang={}&geocode={}&format=json{}",
+                          self.geocode_api_key, params.lang_code, address, build_bbox_part(params.location));
         let resp = self.client.get(url).send().await?;
         self.inc_resp_counter(&resp);
 
@@ -105,14 +105,14 @@ impl YandexLocFinder {
         Ok(result)
     }
 
-    pub async fn find_place(&self, address: &str, lang_code: &str) -> LocResult {
+    async fn find_place(&self, address: &str, params: SearchParams<'_>) -> LocResult {
         self.place_req_counter.inc();
 
         let api_key = self.places_api_key.clone()
             .ok_or(anyhow!("unexpected absence of a key for Yandex Maps Places API"))?;
 
-        let url = format!("https://search-maps.yandex.ru/v1/?apikey={}&lang={}&text={}",
-                          api_key, lang_code, address);
+        let url = format!("https://search-maps.yandex.ru/v1/?apikey={}&lang={}&text={}{}",
+                          api_key, params.lang_code, address, build_bbox_part(params.location));
         let resp = self.client.get(url).send().await?;
         self.inc_resp_counter(&resp);
 
@@ -132,11 +132,12 @@ impl YandexLocFinder {
 
 #[async_trait]
 impl LocFinder for YandexLocFinder {
-    async fn find(&self, query: &str, lang_code: &str) -> LocResult {
+    async fn find(&self, query: &str, lang_code: &str, location: Option<(f64, f64)>) -> LocResult {
+        let params = SearchParams { lang_code, location };
         match *YAPI_MODE {
-            YandexAPIMode::Geocode => self.find_geo(query, lang_code).await,
-            YandexAPIMode::Place => self.find_place(query, lang_code).await,
-            YandexAPIMode::GeoPlace => self.find_geo_place(query, lang_code).await,
+            YandexAPIMode::Geocode => self.find_geo(query, params).await,
+            YandexAPIMode::Place => self.find_place(query, params).await,
+            YandexAPIMode::GeoPlace => self.find_geo_place(query, params).await,
         }
     }
 }
@@ -183,4 +184,11 @@ fn places_elem_mapper(v: &serde_json::Value) -> Option<Location> {
     Some(Location {
         address, latitude, longitude
     })
+}
+
+fn build_bbox_part(location: Option<(f64, f64)>) -> String {
+    location
+        .map(|loc| get_bounds(loc, *SEARCH_RADIUS))
+        .map(|(p1, p2)| format!("&bbox={},{}~{},{}", p1.1, p1.0, p2.1, p2.0))
+        .unwrap_or_default()
 }

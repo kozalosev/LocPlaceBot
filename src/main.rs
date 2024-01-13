@@ -5,16 +5,25 @@ mod metrics;
 mod handlers;
 mod help;
 mod utils;
+mod users;
+mod eula;
 
 use std::env::VarError;
 use std::net::SocketAddr;
+use std::time::Duration;
 use axum::Router;
 use reqwest::Url;
 use rust_i18n::i18n;
+use teloxide::dispatching::dialogue::InMemStorage;
+use teloxide::dptree::deps;
 use teloxide::prelude::*;
 use teloxide::update_listeners::webhooks::{axum_to_router, Options};
+use crate::handlers::options::CancellationCallbackData;
+use crate::handlers::options::location::LocationState;
+use crate::users::{Hello, UserService, UserServiceClientGrpc};
 
 const ENV_WEBHOOK_URL: &str = "WEBHOOK_URL";
+const ENV_CACHE_CLEAN_UP_INTERVAL_SECS: &str = "CACHE_CLEAN_UP_INTERVAL_SECS";
 
 i18n!();    // load localizations with default parameters
 
@@ -26,8 +35,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let handler = dptree::entry()
         .branch(Update::filter_inline_query().endpoint(handlers::inline_handler))
         .branch(Update::filter_chosen_inline_result().endpoint(handlers::inline_chosen_handler))
+        .branch(Update::filter_message().filter_command::<handlers::options::location::Commands>().enter_dialogue::<Message, InMemStorage<LocationState>, LocationState>()
+            .branch(dptree::case![LocationState::Start].endpoint(handlers::options::location::start)))
+        .branch(Update::filter_message().enter_dialogue::<Message, InMemStorage<LocationState>, LocationState>()
+            .branch(dptree::case![LocationState::Requested].endpoint(handlers::options::location::requested)))
         .branch(Update::filter_message().filter_command::<handlers::Command>().endpoint(handlers::command_handler))
         .branch(Update::filter_message().endpoint(handlers::message_handler))
+        .branch(Update::filter_callback_query().filter(handlers::options::consent::callback_filter).endpoint(handlers::options::consent::callback_handler))
+        .branch(Update::filter_callback_query().filter(handlers::options::cancellation_filter::<CancellationCallbackData>).endpoint(handlers::options::cancellation_handler::<LocationState, CancellationCallbackData>))
         .branch(Update::filter_callback_query().endpoint(handlers::callback_handler));
 
     let bot = Bot::from_env();
@@ -41,6 +56,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
     let metrics_router = metrics::init();
+
+    let user_service_grpc = UserServiceClientGrpc::with_addr_from_env(Hello::from("LocPlaceBot")).await;
+    let user_service = match user_service_grpc {
+        Ok(grpc) => {
+            let grpc_client = grpc.clone();
+            let interval = std::env::var(ENV_CACHE_CLEAN_UP_INTERVAL_SECS)
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(3600);
+            let interval = Duration::from_secs(interval);
+            tokio::spawn(async move {
+                loop {
+                    grpc_client.clean_up_cache();
+                    tokio::time::sleep(interval).await;
+                }
+            });
+            UserService::Connected(grpc)
+        },
+        Err(e) => {
+            log::error!("couldn't connect to user-service: {e}");
+            UserService::Disabled
+        }
+    };
+    let deps = deps![
+        user_service,
+        InMemStorage::<LocationState>::new()
+    ];
+
     match webhook_url {
         Some(url) => {
             log::info!("Setting a webhook: {url}");
@@ -48,7 +91,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let (listener, stop_flag, bot_router) = axum_to_router(bot.clone(), Options::new(addr, url)).await?;
 
             let error_handler = LoggingErrorHandler::with_custom_text("An error from the update listener");
-            let mut dispatcher = Dispatcher::builder(bot, handler).build();
+            let mut dispatcher = Dispatcher::builder(bot, handler)
+                .dependencies(deps)
+                .build();
             let bot_fut = dispatcher.dispatch_with_listener(listener, error_handler);
 
             let srv = tokio::spawn(async move {
@@ -70,6 +115,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             let bot_fut = tokio::spawn(async move {
                 Dispatcher::builder(bot, handler)
+                    .dependencies(deps)
                     .enable_ctrlc_handler()
                     .build()
                     .dispatch()

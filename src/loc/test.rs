@@ -19,7 +19,7 @@ async fn test_search_chain() {
         .for_lang_code("ru", vec![ru_finder]);
 
     for test_data in HashMap::from([("en", global_address), ("ru", ru_address)]) {
-        let result = chain.find("", test_data.0).await;
+        let result = chain.find("", test_data.0, None).await;
         assert_eq!(result.len(), 1);
         let addr = result.get(0).unwrap()
             .address.clone()
@@ -46,7 +46,7 @@ struct StubLocFinder {
 
 #[async_trait]
 impl LocFinder for StubLocFinder {
-    async fn find(&self, _: &str, _: &str) -> LocResult {
+    async fn find(&self, _: &str, _: &str, _: Option<(f64, f64)>) -> LocResult {
         Ok(self.result.clone())
     }
 }
