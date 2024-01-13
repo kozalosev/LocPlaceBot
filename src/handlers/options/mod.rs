@@ -25,14 +25,14 @@ impl FromStr for LanguageCode {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let code = if s.len() > 2 {
-            &s[..2]
+            s.chars().take(2).collect()
         } else {
-            s
+            s.to_owned()
         }.to_lowercase();
         match code.as_str() {
             "ru" | "be" | "uk" | "🇷🇺" | "🇺🇦" | "🇧🇾" => Ok(Self::Ru),
             "en" | "🇺🇸" | "🇬🇧" => Ok(Self::En { fallback_for: None }),
-            code => Ok(Self::En { fallback_for: Some(code.to_owned()) })
+            _ => Ok(Self::En { fallback_for: Some(code) })
         }
     }
 }
