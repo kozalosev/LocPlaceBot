@@ -1,8 +1,9 @@
 #[cfg(test)]
 pub mod mock;
 
-use std::net::SocketAddr;
+use std::net::{SocketAddr, ToSocketAddrs};
 use std::sync::Arc;
+use anyhow::anyhow;
 use async_trait::async_trait;
 use chashmap::CHashMap;
 use derive_more::{Constructor, Display, From};
@@ -155,7 +156,9 @@ impl UserServiceClientGrpc {
     }
 
     pub async fn with_addr_from_env(hello: Hello) -> anyhow::Result<Self> {
-        let addr: SocketAddr = std::env::var(ENV_GRPC_ADDR_USER_SERVICE)?.parse()?;
+        let addr = std::env::var(ENV_GRPC_ADDR_USER_SERVICE)?
+            .to_socket_addrs()?.next()
+            .ok_or(anyhow!("GRPC_ADDR_USER_SERVICE is not specified!"))?;
         let client = Self::connect(addr, hello).await?;
         Ok(client)
     }

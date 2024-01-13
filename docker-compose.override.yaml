@@ -6,3 +6,6 @@ services:
   postgres:
     ports:
       - "${POSTGRES_PORT}:${POSTGRES_PORT}"
+  user-service:
+    ports:
+      - "8090:8090"
