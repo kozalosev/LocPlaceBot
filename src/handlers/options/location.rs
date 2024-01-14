@@ -18,8 +18,8 @@ use crate::utils::ensure_lang_code;
 #[derive(BotCommands, Clone)]
 #[command(rename_rule = "lowercase")]
 pub enum Commands {
-    #[command(description = "set.location")]
     SetLocation,
+    #[command(description = "set.location")]
     SetLoc,
 }
 

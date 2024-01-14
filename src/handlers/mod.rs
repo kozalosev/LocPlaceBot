@@ -31,8 +31,8 @@ pub enum Command {
     Start,
     #[command(description = "loc")]
     Loc,
-    #[command(description = "set.language")]
     SetLanguage(LanguageCode),
+    #[command(description = "set.language")]
     SetLang(LanguageCode),
 }
 
