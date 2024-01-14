@@ -6,10 +6,11 @@ use teloxide::macros::BotCommands;
 use teloxide::payloads::{SendMessageSetters};
 use teloxide::prelude::Dialogue;
 use teloxide::requests::Requester;
-use teloxide::types::{ButtonRequest, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, KeyboardMarkup, KeyboardRemove, Message, ReplyMarkup, User};
+use teloxide::types::{ButtonRequest, ChatId, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, KeyboardMarkup, KeyboardRemove, Message, ReplyMarkup, User};
 use teloxide::types::ParseMode::Html;
 use crate::handlers::{AnswerMessage, HandlerResult, process_answer_message};
 use crate::handlers::options::callback::CancellationCallbackData;
+use crate::handlers::options::consent::SavedSetCommand;
 use crate::handlers::options::register_user;
 use crate::metrics;
 use crate::users::{UserService, UserServiceClient, UserServiceClientGrpc};
@@ -46,19 +47,7 @@ pub async fn start(bot: Bot, dialogue: LocationDialogue, msg: Message, usr_clien
         MaybeContext::DialogueContext { lang_code, .. } => lang_code,
         MaybeContext::MessageToSend(answer) => return process_answer_message(bot, msg.chat.id, answer).await
     };
-
-    let msg_text = t!("set-option.location.message.text", locale = &lang_code);
-    let btn_text = t!("set-option.location.message.button", locale = &lang_code);
-    let keyboard = KeyboardMarkup::new(vec![vec![
-        KeyboardButton::new(btn_text).request(ButtonRequest::Location)
-    ]]);
-
-    bot.send_message(msg.chat.id, msg_text)
-        .parse_mode(Html)
-        .reply_markup(keyboard)
-        .await?;
-
-    dialogue.update(LocationState::Requested).await?;
+    send_location_request(bot, msg.chat.id, dialogue, &lang_code).await?;
     Ok(())
 }
 
@@ -97,6 +86,22 @@ pub async fn requested(bot: Bot, msg: Message, dialogue: LocationDialogue, usr_c
     Ok(())
 }
 
+pub(super) async fn send_location_request(bot: Bot, chat_id: ChatId, dialogue: LocationDialogue, lang_code: &str) -> HandlerResult {
+    let msg_text = t!("set-option.location.message.text", locale = lang_code);
+    let btn_text = t!("set-option.location.message.button", locale = lang_code);
+    let keyboard = KeyboardMarkup::new(vec![vec![
+        KeyboardButton::new(btn_text).request(ButtonRequest::Location)
+    ]]);
+
+    bot.send_message(chat_id, msg_text)
+        .parse_mode(Html)
+        .reply_markup(keyboard)
+        .await?;
+
+    dialogue.update(LocationState::Requested).await?;
+    Ok(())
+}
+
 async fn build_context<USC: UserServiceClient>(user: &User, usr_client: UserService<USC>) -> anyhow::Result<MaybeContext<USC>> {
     use MaybeContext::*;
 
@@ -104,7 +109,7 @@ async fn build_context<USC: UserServiceClient>(user: &User, usr_client: UserServ
     let res = match usr_client {
         UserService::Connected(client) => {
             if client.get(user.id).await?.is_none() {
-                MessageToSend(register_user(client, user).await?)
+                MessageToSend(register_user(client, user, SavedSetCommand::Location).await?)
             } else {
                 DialogueContext { usr_client: client, lang_code }
             }

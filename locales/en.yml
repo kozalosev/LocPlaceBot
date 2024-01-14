@@ -17,7 +17,7 @@ registration:
     button: "Accept"
   consent:
     ok: "Your account has been created successfully!"
-    appendix: "<i>Accepted by the <b>%{username}</b></i>\n\nThank you! Now you can invoke the command again."
+    appendix: "<i>Accepted by the <b>%{username}</b></i>\n\nThank you!"
 set-option:
   language:
     success: "👌🏼👍🏼"

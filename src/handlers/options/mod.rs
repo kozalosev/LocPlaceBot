@@ -12,6 +12,7 @@ use crate::users::UserServiceClient;
 use crate::utils::ensure_lang_code;
 
 pub use callback::{cancellation_filter, cancellation_handler, CancellationCallbackData};
+use crate::handlers::options::consent::{ConsentCallbackData, SavedSetCommand};
 
 #[derive(Debug, strum_macros::Display, Clone)]
 #[strum(serialize_all="lowercase")]
@@ -53,19 +54,19 @@ pub(super) async fn cmd_set_language_handler(usr_client: impl UserServiceClient,
             usr_client.set_language(user.id, &code).await?;
             Ok(t!("set-option.language.success", locale = &code).into())
         },
-        None => register_user(usr_client, user).await
+        None => register_user(usr_client, user, SavedSetCommand::Language(code)).await
     }
 }
 
-async fn register_user(client: impl UserServiceClient, user: &teloxide::types::User) -> anyhow::Result<AnswerMessage> {
+async fn register_user(client: impl UserServiceClient, user: &teloxide::types::User, cmd: SavedSetCommand) -> anyhow::Result<AnswerMessage> {
     let lang_code = &ensure_lang_code(user.id, user.language_code.clone(), &client.into()).await;
 
     let msg_text = build_agreement_text(lang_code);
     let btn_text = t!("registration.message.button", locale = lang_code);
-    let btn_data = format!("consent:{}:{lang_code}", user.id);
+    let btn_data = ConsentCallbackData::new(user.id, lang_code.to_owned(), cmd);
 
     let keyboard = InlineKeyboardMarkup::new(vec![vec![
-        InlineKeyboardButton::callback(btn_text, btn_data)
+        InlineKeyboardButton::callback(btn_text, btn_data.to_string())
     ]]);
     Ok(AnswerMessage::TextWithMarkup(msg_text, keyboard.into()))
 }
