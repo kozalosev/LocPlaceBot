@@ -46,13 +46,13 @@ static FINDER: Lazy<SearchChain> = Lazy::new(|| {
     let google = finder("GOOGLE", google::GoogleLocFinder::from_env());
 
     SearchChain::new(vec![
-        osm.clone(),
         google.clone(),
+        osm.clone(),
         yandex.clone(),
     ]).for_lang_code("ru", vec![
         yandex,
-        osm,
         google,
+        osm,
     ])
 });
 static INLINE_REQUESTS_LIMITER: Lazy<RequestsLimiter> = Lazy::new(RequestsLimiter::from_env);

@@ -68,7 +68,7 @@ pub async fn requested(bot: Bot, msg: Message, dialogue: LocationDialogue, usr_c
             bot.send_message(msg.chat.id, t!("set-option.location.message.text", locale = &lang_code))
                 .reply_markup(ReplyMarkup::InlineKeyboard(cancellation_keyboard))
                 .await?;
-            return dialogue.update(LocationState::Requested).await.map_err(Into::into)
+            return Ok(());
         },
         Some(loc) => {
             dialogue.exit().await?;
@@ -105,7 +105,7 @@ pub(super) async fn send_location_request(bot: Bot, chat_id: ChatId, dialogue: L
 async fn build_context<USC: UserServiceClient>(user: &User, usr_client: UserService<USC>) -> anyhow::Result<MaybeContext<USC>> {
     use MaybeContext::*;
 
-    let lang_code = ensure_lang_code(user.id, user.language_code.clone(), &usr_client.clone().into()).await;
+    let lang_code = ensure_lang_code(user.id, user.language_code.clone(), &usr_client.clone()).await;
     let res = match usr_client {
         UserService::Connected(client) => {
             if client.get(user.id).await?.is_none() {
