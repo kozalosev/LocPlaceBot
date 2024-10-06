@@ -6,14 +6,13 @@ use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
 pub fn caching_client() -> ClientWithMiddleware {
     let client = reqwest::Client::builder()
         .build().expect("couldn't create an HTTP client");
-    let client = ClientBuilder::new(client)
+    ClientBuilder::new(client)
         .with(Cache(HttpCache {
             mode: CacheMode::Default,
             manager: MokaManager::default(),
             options: Some(CacheOptions::default()),
         }))
-        .build();
-    client
+        .build()
 }
 
 pub trait WithCachedResponseCounters {

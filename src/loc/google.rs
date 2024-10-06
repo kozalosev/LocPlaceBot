@@ -86,7 +86,7 @@ impl GoogleLocFinder {
     async fn find_geo(&self, address: &str, params: SearchParams<'_>) -> LocResult {
         self.geocode_req_counter.inc();
         let bounds_part = params.location
-            .map(|loc| get_bounds(loc, f64::from(*SEARCH_RADIUS)))
+            .map(|loc| get_bounds(loc, *SEARCH_RADIUS))
             .map(|(p1, p2)| format!("&bounds={},{}%7C{},{}", p1.0, p1.1, p2.0, p2.1))
             .unwrap_or_default();
         let url = format!("https://maps.googleapis.com/maps/api/geocode/json?key={}&address={}&language={}&region={}{bounds_part}",

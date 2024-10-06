@@ -9,13 +9,11 @@ use crate::loc::Location;
 
 static CACHE_TIME: Lazy<Option<u32>> = Lazy::new(|| std::env::var("CACHE_TIME")
     .ok()
-    .map(|v| { v.parse().ok() })
-    .flatten()
+    .and_then(|v| { v.parse().ok() })
 );
 static MSG_LOC_LIMIT: Lazy<usize> = Lazy::new(|| std::env::var("MSG_LOC_LIMIT")
     .ok()
-    .map(|v| { v.parse().ok() })
-    .flatten()
+    .and_then(|v| { v.parse().ok() })
     .unwrap_or(10)
 );
 
@@ -40,7 +38,7 @@ pub async fn send_locations_inline(bot: Bot, query_id: String, lang_code: &str, 
 pub async fn send_locations_as_messages(bot: Bot, chat_id: ChatId, locations: Vec<Location>, lang_code: &str) -> Result<Message, RequestError> {
     match locations.len() {
         0 => bot.send_message(chat_id, t!("title.address-list.empty", locale = lang_code)).await,
-        1 => send_single_location(&bot, chat_id, locations.get(0).unwrap()).await,
+        1 => send_single_location(&bot, chat_id, locations.first().unwrap()).await,
         _ => send_locations_keyboard(&bot, chat_id, locations, lang_code).await
     }
 }

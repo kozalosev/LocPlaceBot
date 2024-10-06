@@ -90,7 +90,7 @@ impl SearchChain {
 
         for fut in futures {
             match fut.await {
-                Ok(res) if res.len() > 0 => return res,
+                Ok(res) if !res.is_empty() => return res,
                 Ok(_) => continue,
                 Err(err) => log::error!("couldn't fetch loc data: {err}"),
             }

@@ -64,8 +64,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let webhook_url: Option<Url> = match std::env::var(ENV_WEBHOOK_URL) {
-        Ok(env_url) if env_url.len() > 0 => Some(env_url.parse()?),
-        Ok(env_url) if env_url.len() == 0 => None,
+        Ok(env_url) if !env_url.is_empty() => Some(env_url.parse()?),
+        Ok(env_url) if env_url.is_empty() => None,
         Err(VarError::NotPresent) => None,
         _ => Err("invalid webhook URL!")?
     };
@@ -123,7 +123,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
 
             let (res, _) = futures::join!(srv, bot_fut);
-            res?.map_err(|e| e.into()).into()
+            res?.map_err(Into::into)
         }
         None => {
             log::info!("The polling dispatcher is activating...");
@@ -150,7 +150,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             });
 
             let (res, _) = futures::join!(srv, bot_fut);
-            res?.map_err(|e| e.into()).into()
+            res?.map_err(Into::into)
         }
     }
 }

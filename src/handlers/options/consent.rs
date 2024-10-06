@@ -60,7 +60,7 @@ impl FromStr for SavedSetCommand {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.split_once(':') {
-            Some((param, value)) if param == "lang" => Ok(Self::Language(value.to_owned())),
+            Some(("lang", value)) => Ok(Self::Language(value.to_owned())),
             None if s == "loc" => Ok(Self::Location),
             _ => Err(())
         }

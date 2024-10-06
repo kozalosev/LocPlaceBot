@@ -55,7 +55,7 @@ static FINDER: Lazy<SearchChain> = Lazy::new(|| {
         google,
     ])
 });
-static INLINE_REQUESTS_LIMITER: Lazy<RequestsLimiter> = Lazy::new(|| RequestsLimiter::from_env());
+static INLINE_REQUESTS_LIMITER: Lazy<RequestsLimiter> = Lazy::new(RequestsLimiter::from_env);
 
 pub fn preload_env_vars() {
     google::preload_env_vars();
@@ -156,15 +156,15 @@ pub async fn callback_handler(bot: Bot, q: CallbackQuery) -> HandlerResult {
 
     let mut answer = bot.answer_callback_query(q.clone().id);
     if let (Some(chat_id), Some(data)) = (q.chat_id(), q.data) {
-        let parts: Vec<&str> = data.split(",").collect();
+        let parts: Vec<&str> = data.split(',').collect();
         if parts.len() != 2 {
             Err("unexpected format of callback data")?;
         }
-        let latitude: f64 = parts.get(0).unwrap().parse()?;
+        let latitude: f64 = parts.first().unwrap().parse()?;
         let longitude: f64 = parts.get(1).unwrap().parse()?;
         bot.send_location(chat_id, latitude, longitude).await?;
     } else {
-        let lang_code = q.from.language_code.unwrap_or(String::default());
+        let lang_code = q.from.language_code.unwrap_or_default();
         answer.text = Some(t!("error.old-message", locale = lang_code.as_str()));
         answer.show_alert = Some(true);
     }
@@ -198,7 +198,7 @@ async fn resolve_locations(query: String, lang_code: &str, location: Option<(f64
 
 async fn determine_lang_code(msg: &Message, usr_client: &UserService<impl UserServiceClient>) -> anyhow::Result<String> {
     let from = msg.from().ok_or(anyhow!("no from"))?;
-    Ok(ensure_lang_code(from.id, from.language_code.clone(), &usr_client).await)
+    Ok(ensure_lang_code(from.id, from.language_code.clone(), usr_client).await)
 }
 
 async fn process_answer_message(bot: Bot, chat_id: ChatId, answer: AnswerMessage) -> HandlerResult {

@@ -63,7 +63,7 @@ impl RequestsLimiter {
             else {
                 return Err(anyhow!("unexpected non-bulk type of new_val"))
             };
-        let redis::Value::Int(new_val) = new_val.get(0)
+        let redis::Value::Int(new_val) = new_val.first()
             .ok_or(anyhow!("unexpected empty vector in a bulk"))?
             else {
                 return Err(anyhow!("unexpected non-int type of new_val"))
@@ -99,9 +99,9 @@ impl GetUserId for InlineQuery {
 
 fn resolve_mandatory_env<T: FromStr + ToString>(key: &str) -> T {
     let val = std::env::var(key)
-        .expect(format!("{key} is not set but mandatory!").as_str());
+        .unwrap_or_else(|_| panic!("{key} is not set but mandatory!"));
     let val = T::from_str(val.as_str())
-        .ok().expect(format!("Couldn't convert {key} for some reason").as_str());
+        .ok().unwrap_or_else(|| panic!("Couldn't convert {key} for some reason"));
     if key.to_lowercase().contains("password") {
         log::info!("{} is set to ***", key);
     } else {
