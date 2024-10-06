@@ -3,17 +3,17 @@ use std::sync::Arc;
 use derive_more::{Constructor, Display};
 use rust_i18n::t;
 use teloxide::Bot;
-use teloxide::dispatching::dialogue::{GetChatId, InMemStorage};
+use teloxide::dispatching::dialogue::GetChatId;
 use teloxide::payloads::{AnswerCallbackQuerySetters, EditMessageTextSetters};
 use teloxide::prelude::{CallbackQuery, UserId};
 use teloxide::requests::Requester;
 use teloxide::types::ParseMode::Html;
 use thiserror::Error;
-use crate::eula;
+use crate::{eula, CommandCacheStorage};
 use crate::handlers::HandlerResult;
 use crate::handlers::options::build_agreement_text;
 use crate::handlers::options::callback::{CallbackHandlerDIParams, CallbackPreprocessorResult, preprocess_callback, UserIdAware};
-use crate::handlers::options::location::{LocationDialogue, LocationState, send_location_request};
+use crate::handlers::options::location::{LocationDialogue, send_location_request};
 use crate::users::{Consent, UserService, UserServiceClient, UserServiceClientGrpc};
 use crate::utils::get_full_name;
 
@@ -80,7 +80,7 @@ pub fn callback_filter(query: CallbackQuery) -> bool {
 }
 
 pub async fn callback_handler(bot: Bot, query: CallbackQuery, usr_client: UserService<UserServiceClientGrpc>,
-                              dialogue_storage: Arc<InMemStorage<LocationState>>) -> HandlerResult {
+                              dialogue_storage: Arc<CommandCacheStorage>) -> HandlerResult {
     let maybe_chat_id = query.chat_id();
     let data = ConsentCallbackData::try_from(query.data.clone().ok_or("no data")?)?;
     let ctx = match preprocess_callback(CallbackHandlerDIParams::new(&bot, &query, usr_client), &data).await? {

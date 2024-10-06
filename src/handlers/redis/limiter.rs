@@ -18,16 +18,10 @@ impl RequestsLimiter {
         RequestsLimiter { pool, max_allowed, timeframe }
     }
 
-    pub fn from_env() -> Self {
-        let host: String = resolve_mandatory_env("REDIS_HOST");
-        let port: u16 = resolve_mandatory_env("REDIS_PORT");
-        let password: String = resolve_mandatory_env("REDIS_PASSWORD");
+    pub fn from_env(redis_client: redis::Client) -> Self {
         let max_allowed = resolve_optional_env("REQUESTS_LIMITER_MAX_ALLOWED", 10);
         let timeframe = resolve_optional_env("REQUESTS_LIMITER_TIMEFRAME", 60);
-
-        let client = redis::Client::open(format!("redis://:{password}@{host}:{port}/"))
-            .expect("Cannot connect to Redis");
-        Self::new(client, max_allowed, timeframe)
+        Self::new(redis_client, max_allowed, timeframe)
     }
 
     pub async fn is_req_allowed(&self,  entity: &impl GetUserId) -> bool {
@@ -97,18 +91,7 @@ impl GetUserId for InlineQuery {
     }
 }
 
-fn resolve_mandatory_env<T: FromStr + ToString>(key: &str) -> T {
-    let val = std::env::var(key)
-        .unwrap_or_else(|_| panic!("{key} is not set but mandatory!"));
-    let val = T::from_str(val.as_str())
-        .ok().unwrap_or_else(|| panic!("Couldn't convert {key} for some reason"));
-    if key.to_lowercase().contains("password") {
-        log::info!("{} is set to ***", key);
-    } else {
-        log::info!("{} is set to {}", key, val.to_string());
-    }
-    val
-}
+
 
 fn resolve_optional_env<T: FromStr + ToString>(key: &str, default: T) -> T {
     let val = std::env::var(key)

@@ -1,7 +1,7 @@
 use mobc_redis::redis::Client;
 use teloxide::prelude::UserId;
 use testcontainers::{clients, Container, core::WaitFor, images::generic::GenericImage};
-use crate::handlers::limiter::{GetUserId, RequestsLimiter};
+use crate::handlers::redis::limiter::{GetUserId, RequestsLimiter};
 
 #[tokio::test]
 async fn test_rate_limiter() {

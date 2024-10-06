@@ -1,13 +1,15 @@
 use derive_more::From;
 use rust_i18n::t;
 use teloxide::Bot;
-use teloxide::dispatching::dialogue::InMemStorage;
+use teloxide::dispatching::dialogue::RedisStorage;
 use teloxide::macros::BotCommands;
 use teloxide::payloads::{SendMessageSetters};
 use teloxide::prelude::Dialogue;
 use teloxide::requests::Requester;
 use teloxide::types::{ButtonRequest, ChatId, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, KeyboardMarkup, KeyboardRemove, Message, ReplyMarkup, User};
 use teloxide::types::ParseMode::Html;
+use serde::{Deserialize, Serialize};
+use teloxide::dispatching::dialogue::serializer::Json;
 use crate::handlers::{AnswerMessage, HandlerResult, process_answer_message};
 use crate::handlers::options::callback::CancellationCallbackData;
 use crate::handlers::options::consent::SavedSetCommand;
@@ -24,14 +26,14 @@ pub enum Commands {
     SetLoc,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Serialize, Deserialize)]
 pub enum LocationState {
     #[default]
     Start,
     Requested,
 }
 
-pub(super) type LocationDialogue = Dialogue<LocationState, InMemStorage<LocationState>>;
+pub(super) type LocationDialogue = Dialogue<LocationState, RedisStorage<Json>>;
 
 #[derive(From)]
 enum MaybeContext<USC: UserServiceClient> {

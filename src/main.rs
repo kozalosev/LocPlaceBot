@@ -16,16 +16,20 @@ use axum::Router;
 use futures::future::join_all;
 use reqwest::Url;
 use rust_i18n::i18n;
-use teloxide::dispatching::dialogue::InMemStorage;
+use teloxide::dispatching::dialogue::RedisStorage;
+use teloxide::dispatching::dialogue::serializer::Json;
 use teloxide::dptree::deps;
 use teloxide::prelude::*;
 use teloxide::update_listeners::webhooks::{axum_to_router, Options};
 use crate::handlers::options::CancellationCallbackData;
 use crate::handlers::options::location::LocationState;
+use crate::handlers::REDIS;
 use crate::users::{Hello, UserService, UserServiceClientGrpc};
 
 const ENV_WEBHOOK_URL: &str = "WEBHOOK_URL";
 const ENV_CACHE_CLEAN_UP_INTERVAL_SECS: &str = "CACHE_CLEAN_UP_INTERVAL_SECS";
+
+pub type CommandCacheStorage = RedisStorage<Json>;
 
 i18n!(fallback = "en");    // load localizations with default parameters
 
@@ -37,9 +41,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let handler = dptree::entry()
         .branch(Update::filter_inline_query().endpoint(handlers::inline_handler))
         .branch(Update::filter_chosen_inline_result().endpoint(handlers::inline_chosen_handler))
-        .branch(Update::filter_message().filter_command::<handlers::options::location::Commands>().enter_dialogue::<Message, InMemStorage<LocationState>, LocationState>()
+        .branch(Update::filter_message().filter_command::<handlers::options::location::Commands>().enter_dialogue::<Message, CommandCacheStorage, LocationState>()
             .branch(dptree::case![LocationState::Start].endpoint(handlers::options::location::start)))
-        .branch(Update::filter_message().enter_dialogue::<Message, InMemStorage<LocationState>, LocationState>()
+        .branch(Update::filter_message().enter_dialogue::<Message, CommandCacheStorage, LocationState>()
             .branch(dptree::case![LocationState::Requested].endpoint(handlers::options::location::requested)))
         .branch(Update::filter_message().filter_command::<handlers::Command>().endpoint(handlers::command_handler))
         .branch(Update::filter_message().endpoint(handlers::message_handler))
@@ -96,7 +100,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let deps = deps![
         user_service,
-        InMemStorage::<LocationState>::new()
+        RedisStorage::open(REDIS.connection_url.clone(), Json).await?
     ];
 
     match webhook_url {
