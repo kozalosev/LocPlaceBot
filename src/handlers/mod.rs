@@ -106,9 +106,9 @@ enum AnswerMessage {
 
 pub async fn command_handler(bot: Bot, msg: Message, cmd: Command, me: Me, usr_client: UserService<UserServiceClientGrpc>) -> HandlerResult {
     let help_or_status: AnswerMessage = match cmd {
-        Command::Start if msg.from().is_some() => {
+        Command::Start if msg.from.is_some() => {
             metrics::CMD_START_COUNTER.inc();
-            help::get_start_message(msg.from().unwrap(), me, usr_client).await.into()
+            help::get_start_message(msg.from.as_ref().unwrap(), me, usr_client).await.into()
         },
         Command::Start => {
             log::warn!("The /start command was invoked without a FROM field for a message: {msg:?}");
@@ -125,17 +125,17 @@ pub async fn command_handler(bot: Bot, msg: Message, cmd: Command, me: Me, usr_c
             // return from the outer function
             return cmd_loc_handler(bot, msg, usr_client).await
         }
-        Command::SetLanguage(code) | Command::SetLang(code) if msg.from().is_some() && usr_client.enabled() => {
+        Command::SetLanguage(code) | Command::SetLang(code) if msg.from.is_some() && usr_client.enabled() => {
             metrics::CMD_SET_LANGUAGE_COUNTER.inc();
-            let user = msg.from().unwrap();
+            let user = msg.from.as_ref().unwrap();
             options::cmd_set_language_handler(usr_client.unwrap(), user, code).await?
         }
         _ if usr_client.disabled() => {
             let lang_code = &determine_lang_code(&msg, &usr_client).await?;
-            log::error!("user-service is disabled but a command was invoked by {:?}", msg.from());
-            t!("error.service.user.disabled", locale = lang_code).into()
+            log::error!("user-service is disabled but a command was invoked by {:?}", msg.from);
+            t!("error.service.user.disabled", locale = lang_code).to_string().into()
         },
-        _ if msg.from().is_none() => Err(anyhow!("some command was invoked without a FROM field for a message: {msg:?}"))?,
+        _ if msg.from.is_none() => Err(anyhow!("some command was invoked without a FROM field for a message: {msg:?}"))?,
         _ => Err(anyhow!("unexpected match arm in the command_handler"))?
     };
     process_answer_message(bot, msg.chat.id, help_or_status).await?;
@@ -167,7 +167,7 @@ pub async fn callback_handler(bot: Bot, q: CallbackQuery) -> HandlerResult {
         bot.send_location(chat_id, latitude, longitude).await?;
     } else {
         let lang_code = q.from.language_code.unwrap_or_default();
-        answer.text = Some(t!("error.old-message", locale = lang_code.as_str()));
+        answer.text = Some(t!("error.old-message", locale = &lang_code).to_string());
         answer.show_alert = Some(true);
     }
     answer.await?;
@@ -178,7 +178,7 @@ async fn cmd_loc_handler(bot: Bot, msg: Message, usr_client: UserService<impl Us
     let text = msg.text().ok_or("no text")?.to_string();
     log::info!("Got a message query: {}", text);
 
-    let from = msg.from().ok_or("no from")?;
+    let from = msg.from.ok_or("no from")?;
     let lang_code = &ensure_lang_code(from.id, from.language_code.clone(), &usr_client).await;
     let location = try_determine_location(from.id, &usr_client).await;
     let locations = resolve_locations(text, lang_code, location).await?;
@@ -199,7 +199,7 @@ async fn resolve_locations(query: String, lang_code: &str, location: Option<(f64
 }
 
 async fn determine_lang_code(msg: &Message, usr_client: &UserService<impl UserServiceClient>) -> anyhow::Result<String> {
-    let from = msg.from().ok_or(anyhow!("no from"))?;
+    let from = msg.from.as_ref().ok_or(anyhow!("no from"))?;
     Ok(ensure_lang_code(from.id, from.language_code.clone(), usr_client).await)
 }
 

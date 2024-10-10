@@ -7,7 +7,7 @@ use teloxide::payloads::{AnswerCallbackQuery, AnswerCallbackQuerySetters, SendMe
 use teloxide::prelude::{CallbackQuery, Dialogue, Requester, UserId};
 use teloxide::requests::JsonRequest;
 use teloxide::types::ParseMode::Html;
-use teloxide::types::{KeyboardRemove, ReplyMarkup};
+use teloxide::types::{KeyboardRemove, MaybeInaccessibleMessage, ReplyMarkup};
 use crate::handlers::HandlerResult;
 use crate::users::{UserService, UserServiceClient, UserServiceClientGrpc};
 use crate::utils::ensure_lang_code;
@@ -110,7 +110,10 @@ where
         CallbackPreprocessorResult::Processed(context) => context,
         CallbackPreprocessorResult::ErrorSent => return Ok(())
     };
-    let maybe_chat_id = query.message.map(|msg| msg.chat.id);
+    let maybe_chat_id = query.message.map(|msg| match msg {
+        MaybeInaccessibleMessage::Regular(m)               => m.chat.id,
+        MaybeInaccessibleMessage::Inaccessible(m) => m.chat.id,
+    });
 
     if let Some(chat_id) = maybe_chat_id {
         let placeholder = t!("set-option.location.remove-keyboard", locale = &ctx.lang_code);

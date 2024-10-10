@@ -1,13 +1,14 @@
 use std::error::Error;
+use std::sync::Arc;
 use derive_more::Constructor;
-use http_cache::{CacheManager, CacheMode, HitOrMiss, HttpCache, HttpResponse, XCACHELOOKUP};
-use http_cache_reqwest::{Cache, CacheOptions};
-use http_cache_semantics::CachePolicy;
+use http_cache::{CacheManager, CacheMode, HitOrMiss, HttpCache, HttpCacheOptions, HttpResponse, XCACHELOOKUP};
+use http_cache_reqwest::Cache;
+use http_cache_semantics::{CacheOptions, CachePolicy};
 use mobc_redis::redis::AsyncCommands;
 use reqwest::header::HeaderValue;
-use reqwest::Url;
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
 use serde::{Deserialize, Serialize};
+use serde::de::DeserializeOwned;
 use crate::redis::REDIS;
 
 pub fn caching_client() -> ClientWithMiddleware {
@@ -17,12 +18,17 @@ pub fn caching_client() -> ClientWithMiddleware {
         .with(Cache(HttpCache {
             mode: CacheMode::Default,
             manager: RedisCacheManager::new(REDIS.pool.clone()),
-            options: Some(CacheOptions::default()),
+            options: HttpCacheOptions {
+                cache_options: Some(CacheOptions {
+                    ignore_cargo_cult: true,
+                    ..CacheOptions::default()
+                }),
+                cache_key: Some(Arc::new(|parts| format!("loc-cache:{}:{}", parts.method, parts.uri))),
+                ..HttpCacheOptions::default()
+            },
         }))
         .build()
 }
-
-const CACHE_KEY_PREFIX: &str = "loc-cache";
 
 #[derive(Clone, Constructor)]
 struct RedisCacheManager {
@@ -37,36 +43,36 @@ struct Store {
 
 #[async_trait::async_trait]
 impl CacheManager for RedisCacheManager {
-    async fn get(&self, method: &str, url: &Url) -> http_cache::Result<Option<(HttpResponse, CachePolicy)>> {
+    async fn get(&self, cache_key: &str) -> http_cache::Result<Option<(HttpResponse, CachePolicy)>> {
         let result = self.pool.get().await
             .inspect_err(log_failed_connection_error)?
-            .get::<String, Option<Vec<u8>>>(redis_req_key(method, url)).await
+            .get::<&str, Option<Vec<u8>>>(cache_key).await
             .inspect_err(|err| log::error!("Couldn't fetch a record from Redis: {err}"))
             .ok().flatten()
-            .map(|data| bincode::deserialize::<Store>(&data))
+            .map(deserialize)
             .and_then(|result| result
                 .inspect_err(|err| log::error!("Couldn't deserialize the record fetched from Redis: {err}"))
                 .ok())
-            .map(|store| (store.response, store.policy));
+            .map(|store: Store| (store.response, store.policy));
         Ok(result)
     }
 
-    async fn put(&self, method: &str, url: &Url, res: HttpResponse, policy: CachePolicy) -> http_cache::Result<HttpResponse> {
+    async fn put(&self, cache_key: String, res: HttpResponse, policy: CachePolicy) -> http_cache::Result<HttpResponse> {
         let store = Store { response: res.clone(), policy };
-        let data = bincode::serialize(&store)
+        let data = serialize(&store)
             .inspect_err(|err| log::error!("Couldn't serialize the response: {err}"))?;
         self.pool
             .get().await
             .inspect_err(log_failed_connection_error)?
-            .set(redis_req_key(method, url), data).await
+            .set(cache_key, data).await
             .inspect_err(|err| log::error!("Couldn't push a record into Redis: {err}"))?;
         Ok(res)
     }
 
-    async fn delete(&self, method: &str, url: &Url) -> http_cache::Result<()> {
+    async fn delete(&self, cache_key: &str) -> http_cache::Result<()> {
         self.pool.get().await
             .inspect_err(log_failed_connection_error)?
-            .del::<String, ()>(redis_req_key(method, url)).await
+            .del::<&str, ()>(cache_key).await
             .inspect_err(|err| log::error!("Couldn't delete the record from Redis: {err}"))
             .map_err(Into::into)
     }
@@ -100,10 +106,15 @@ fn from_cache(resp: &reqwest::Response) -> bool {
         .is_some()
 }
 
-fn redis_req_key(method: &str, url: &Url) -> String {
-    format!("{CACHE_KEY_PREFIX}:{method}:{url}")
-}
-
 fn log_failed_connection_error(err: &impl Error) {
     log::error!("Couldn't get a Redis connection: {err}")
+}
+
+fn serialize(value: impl Serialize) -> Result<Vec<u8>, bincode::error::EncodeError> {
+    bincode::serde::encode_to_vec(value, bincode::config::standard())
+}
+
+fn deserialize<T: DeserializeOwned>(bytes: Vec<u8>) -> Result<T, bincode::error::DecodeError> {
+    bincode::serde::decode_from_slice(bytes.as_slice(), bincode::config::standard())
+        .map(|(t, _)| t)
 }

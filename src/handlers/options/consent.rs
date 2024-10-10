@@ -1,5 +1,6 @@
 use std::str::FromStr;
 use std::sync::Arc;
+use anyhow::anyhow;
 use derive_more::{Constructor, Display};
 use rust_i18n::t;
 use teloxide::Bot;
@@ -7,6 +8,7 @@ use teloxide::dispatching::dialogue::GetChatId;
 use teloxide::payloads::{AnswerCallbackQuerySetters, EditMessageTextSetters};
 use teloxide::prelude::{CallbackQuery, UserId};
 use teloxide::requests::Requester;
+use teloxide::types::MaybeInaccessibleMessage;
 use teloxide::types::ParseMode::Html;
 use thiserror::Error;
 use crate::{eula, CommandCacheStorage};
@@ -89,7 +91,7 @@ pub async fn callback_handler(bot: Bot, query: CallbackQuery, usr_client: UserSe
     };
 
     match query.message {
-        Some(msg) if msg.text().is_some() => {
+        Some(MaybeInaccessibleMessage::Regular(msg)) if msg.text().is_some() => {
             let eula_hash = eula::get_in(&data.lang_code).hash;
             let consent = Consent::new(msg.id, eula_hash);
             let name = get_full_name(&query.from);
@@ -104,8 +106,10 @@ pub async fn callback_handler(bot: Bot, query: CallbackQuery, usr_client: UserSe
             ctx.answer.show_alert(false)
                 .text(t!("registration.consent.ok", locale = &ctx.lang_code))
         },
-        _ => ctx.answer.show_alert(true)
-            .text(t!("error.old-message", locale = &ctx.lang_code))
+        Some(MaybeInaccessibleMessage::Inaccessible(_)) => ctx.answer.show_alert(true)
+            .text(t!("error.old-message", locale = &ctx.lang_code)),
+        Some(MaybeInaccessibleMessage::Regular(_))      => Err(anyhow!("no text of the message"))?,
+        None                                            => Err(anyhow!("no message in the callback query"))?,
     }.await?;
 
     let chat_id = maybe_chat_id.ok_or("no chat_id")?;

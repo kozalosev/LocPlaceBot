@@ -1,3 +1,4 @@
+use teloxide::update_listeners::UpdateListener;
 extern crate core;
 
 mod loc;
@@ -13,7 +14,6 @@ mod redis;
 use std::env::VarError;
 use std::net::SocketAddr;
 use std::time::Duration;
-use axum::Router;
 use futures::future::join_all;
 use reqwest::Url;
 use rust_i18n::i18n;
@@ -101,14 +101,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let deps = deps![
         user_service,
-        RedisStorage::open(REDIS.connection_url.clone(), Json).await?
+        RedisStorage::open(&REDIS.connection_url, Json).await?
     ];
 
     match webhook_url {
         Some(url) => {
             log::info!("Setting a webhook: {url}");
 
-            let (listener, stop_flag, bot_router) = axum_to_router(bot.clone(), Options::new(addr, url)).await?;
+            let (mut listener, stop_flag, bot_router) = axum_to_router(bot.clone(), Options::new(addr, url)).await?;
+            let stop_token = listener.stop_token();
 
             let error_handler = LoggingErrorHandler::with_custom_text("An error from the update listener");
             let mut dispatcher = Dispatcher::builder(bot, handler)
@@ -117,11 +118,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let bot_fut = dispatcher.dispatch_with_listener(listener, error_handler);
 
             let srv = tokio::spawn(async move {
-                axum::Server::bind(&addr)
-                    .serve(Router::new()
-                        .merge(metrics_router)
-                        .merge(bot_router)
-                        .into_make_service())
+                let tcp_listener = tokio::net::TcpListener::bind(addr)
+                    .await
+                    .map_err(|err| {
+                        stop_token.stop();
+                        err
+                    })?;
+                let app = axum::Router::new()
+                    .merge(metrics_router)
+                    .merge(bot_router);
+                axum::serve(tcp_listener, app)
                     .with_graceful_shutdown(stop_flag)
                     .await
                 }
@@ -143,8 +149,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             });
 
             let srv = tokio::spawn(async move {
-                axum::Server::bind(&addr)
-                    .serve(metrics_router.into_make_service())
+                let tcp_listener = tokio::net::TcpListener::bind(addr).await?;
+                axum::serve(tcp_listener, metrics_router)
                     .with_graceful_shutdown(async {
                         tokio::signal::ctrl_c()
                             .await

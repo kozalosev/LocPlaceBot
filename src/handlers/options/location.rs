@@ -43,7 +43,7 @@ enum MaybeContext<USC: UserServiceClient> {
 
 pub async fn start(bot: Bot, dialogue: LocationDialogue, msg: Message, usr_client: UserService<UserServiceClientGrpc>) -> HandlerResult {
     metrics::CMD_SET_LOCATION_COUNTER.invoked();
-    let user = msg.from().ok_or("no user")?;
+    let user = msg.from.as_ref().ok_or("no user")?;
 
     let lang_code = match build_context(user, usr_client).await? {
         MaybeContext::DialogueContext { lang_code, .. } => lang_code,
@@ -54,7 +54,7 @@ pub async fn start(bot: Bot, dialogue: LocationDialogue, msg: Message, usr_clien
 }
 
 pub async fn requested(bot: Bot, msg: Message, dialogue: LocationDialogue, usr_client: UserService<UserServiceClientGrpc>) -> HandlerResult {
-    let user = msg.from().ok_or("no user")?;
+    let user = msg.from.as_ref().ok_or("no user")?;
     let (client, lang_code) = match build_context(user, usr_client).await? {
         MaybeContext::DialogueContext { usr_client, lang_code } => (usr_client, lang_code),
         MaybeContext::MessageToSend(answer) => return process_answer_message(bot, msg.chat.id, answer).await
@@ -116,7 +116,7 @@ async fn build_context<USC: UserServiceClient>(user: &User, usr_client: UserServ
                 DialogueContext { usr_client: client, lang_code }
             }
         }
-        UserService::Disabled => AnswerMessage::Text(t!("error.service.user.disabled", locale = &lang_code)).into()
+        UserService::Disabled => AnswerMessage::Text(t!("error.service.user.disabled", locale = &lang_code).to_string()).into()
     };
     Ok(res)
 }

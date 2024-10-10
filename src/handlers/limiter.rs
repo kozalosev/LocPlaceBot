@@ -70,7 +70,7 @@ pub trait GetUserId {
 
 impl GetUserId for Message {
     fn user_id(&self) -> Option<UserId> {
-        self.from()
+        self.from.as_ref()
             .map(|u| u.id)
     }
 }

@@ -21,7 +21,7 @@ pub async fn send_locations_inline(bot: Bot, query_id: String, lang_code: &str, 
     let results: Vec<InlineQueryResult> = locations.iter()
         .map(|l| {
             let uuid = uuid::Uuid::new_v4().to_string();
-            let address = l.address().unwrap_or(t!("title.address.point", locale = lang_code));
+            let address = l.address().unwrap_or(t!("title.address.point", locale = lang_code).to_string());
             InlineQueryResult::Location(
                 InlineQueryResultLocation::new(uuid, address, l.latitude(), l.longitude())
             )})
