@@ -1,10 +1,12 @@
 use std::str::FromStr;
 use anyhow::anyhow;
+use derive_more::Constructor;
 use mobc_redis::{redis, RedisConnectionManager};
 use teloxide::types::{CallbackQuery, InlineQuery, Message, UserId};
 
 const REDIS_KEY_PREFIX: &str = "rate-limiter.";
 
+#[derive(Constructor)]
 pub struct RequestsLimiter {
     pool: mobc::Pool<RedisConnectionManager>,
     max_allowed: i32,
@@ -12,16 +14,10 @@ pub struct RequestsLimiter {
 }
 
 impl RequestsLimiter {
-    pub fn new(client: redis::Client, max_allowed: i32, timeframe: usize) -> Self {
-        let manager = RedisConnectionManager::new(client);
-        let pool = mobc::Pool::new(manager);
-        RequestsLimiter { pool, max_allowed, timeframe }
-    }
-
-    pub fn from_env(redis_client: redis::Client) -> Self {
+    pub fn from_env(redis_pool: &mobc::Pool<RedisConnectionManager>) -> Self {
         let max_allowed = resolve_optional_env("REQUESTS_LIMITER_MAX_ALLOWED", 10);
         let timeframe = resolve_optional_env("REQUESTS_LIMITER_TIMEFRAME", 60);
-        Self::new(redis_client, max_allowed, timeframe)
+        Self::new(redis_pool.clone(), max_allowed, timeframe)
     }
 
     pub async fn is_req_allowed(&self,  entity: &impl GetUserId) -> bool {

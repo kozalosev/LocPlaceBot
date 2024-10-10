@@ -8,6 +8,7 @@ mod utils;
 mod users;
 mod eula;
 mod commands;
+mod redis;
 
 use std::env::VarError;
 use std::net::SocketAddr;
@@ -23,7 +24,7 @@ use teloxide::prelude::*;
 use teloxide::update_listeners::webhooks::{axum_to_router, Options};
 use crate::handlers::options::CancellationCallbackData;
 use crate::handlers::options::location::LocationState;
-use crate::handlers::REDIS;
+use crate::redis::REDIS;
 use crate::users::{Hello, UserService, UserServiceClientGrpc};
 
 const ENV_WEBHOOK_URL: &str = "WEBHOOK_URL";

@@ -1,9 +1,12 @@
 pub mod options;
 
 mod senders;
+mod limiter;
 
-mod redis;
+#[cfg(test)]
+mod limiter_test;
 
+use std::clone::Clone;
 use anyhow::anyhow;
 use derive_more::From;
 use regex::Regex;
@@ -17,8 +20,9 @@ use teloxide::dispatching::dialogue::GetChatId;
 use teloxide::types::{Me, ReplyMarkup};
 use teloxide::types::ParseMode::Html;
 use teloxide::utils::command::BotCommands;
+use crate::handlers::limiter::RequestsLimiter;
 use crate::handlers::options::LanguageCode;
-use crate::handlers::redis::RedisServices;
+use crate::redis::REDIS;
 use crate::users::{UserService, UserServiceClient, UserServiceClientGrpc};
 
 #[derive(BotCommands, Clone)]
@@ -53,7 +57,7 @@ static FINDER: Lazy<SearchChain> = Lazy::new(|| {
         osm,
     ])
 });
-pub static REDIS: Lazy<RedisServices> = Lazy::new(RedisServices::from_env);
+static INLINE_REQUESTS_LIMITER: Lazy<RequestsLimiter> = Lazy::new(|| RequestsLimiter::from_env(&REDIS.pool));
 
 pub fn preload_env_vars() {
     google::preload_env_vars();
@@ -61,7 +65,7 @@ pub fn preload_env_vars() {
 
     let _ = *COORDS_REGEXP;
     let _ = *FINDER;
-    let _ = *REDIS;
+    let _ = *INLINE_REQUESTS_LIMITER;
 }
 
 pub async fn inline_handler(bot: Bot, q: InlineQuery, usr_client: UserService<UserServiceClientGrpc>) -> HandlerResult {
@@ -81,7 +85,7 @@ pub async fn inline_handler(bot: Bot, q: InlineQuery, usr_client: UserService<Us
 }
 
 async fn rate_limit_exceeded(q: &InlineQuery) -> bool {
-    let forbidden = !REDIS.inline_request_limiter.is_req_allowed(q).await;
+    let forbidden = !INLINE_REQUESTS_LIMITER.is_req_allowed(q).await;
     if forbidden {
         log::info!("Requests limit was exceeded for {}", q.from.id);
         metrics::INLINE_COUNTER.inc_forbidden();

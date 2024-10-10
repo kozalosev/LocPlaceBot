@@ -1,29 +1,31 @@
 use std::str::FromStr;
-use limiter::RequestsLimiter;
+use mobc::Pool;
+use mobc_redis::redis::Client;
+use mobc_redis::RedisConnectionManager;
+use once_cell::sync::Lazy;
 
-pub mod limiter;
+pub static REDIS: Lazy<RedisConnection> = Lazy::new(RedisConnection::from_env);
 
-#[cfg(test)]
-mod limiter_test;
-
-pub struct RedisServices {
+pub struct RedisConnection {
     pub connection_url: String,
-    pub inline_request_limiter: RequestsLimiter,
+    pub pool: Pool<RedisConnectionManager>,
 }
 
-impl RedisServices {
+impl RedisConnection {
     pub fn from_env() -> Self {
         let host: String = resolve_mandatory_env("REDIS_HOST");
         let port: u16 = resolve_mandatory_env("REDIS_PORT");
         let password: String = resolve_mandatory_env("REDIS_PASSWORD");
 
         let connection_url =format!("redis://:{password}@{host}:{port}/");
-        let redis_client = mobc_redis::redis::Client::open(connection_url.clone())
+        let client = Client::open(connection_url.clone())
             .expect("Cannot connect to Redis");
+        let manager = RedisConnectionManager::new(client);
+        let pool = Pool::new(manager);
 
         Self {
             connection_url,
-            inline_request_limiter: RequestsLimiter::from_env(redis_client),
+            pool,
         }
     }
 }
