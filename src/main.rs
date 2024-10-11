@@ -11,6 +11,9 @@ mod eula;
 mod commands;
 mod redis;
 
+#[cfg(test)]
+mod testutils;
+
 use std::env::VarError;
 use std::net::SocketAddr;
 use std::time::Duration;

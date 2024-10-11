@@ -1466,6 +1466,7 @@ dependencies = [
  "chashmap",
  "derive_more 1.0.0",
  "futures",
+ "http 1.1.0",
  "http-cache",
  "http-cache-reqwest",
  "http-cache-semantics",

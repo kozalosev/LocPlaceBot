@@ -5,6 +5,7 @@ use prometheus::Opts;
 use super::cache::WithCachedResponseCounters;
 use super::{cache, LocFinder, LocResult, Location, get_bounds, SEARCH_RADIUS};
 use crate::metrics;
+use crate::redis::REDIS;
 
 pub struct OpenStreetMapLocFinder {
     client: ClientWithMiddleware,
@@ -23,7 +24,7 @@ impl OpenStreetMapLocFinder {
         let from_remote_opts = resp_opts.const_label("source", "remote");
 
         OpenStreetMapLocFinder {
-            client: cache::caching_client(),
+            client: cache::caching_client(&REDIS.pool),
 
             api_req_counter: metrics::REGISTRY.register_counter("OpenStreetMap API requests", api_req_opts),
             cached_resp_counter: metrics::REGISTRY.register_counter("OpenStreetMap API requests", from_cache_opts),

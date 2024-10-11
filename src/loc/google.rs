@@ -6,6 +6,7 @@ use strum_macros::EnumString;
 use super::cache::WithCachedResponseCounters;
 use super::{cache, Location, LocFinder, LocResult, SEARCH_RADIUS, SearchParams};
 use crate::metrics;
+use crate::redis::REDIS;
 
 const FINDER_ENV_API_KEY: &str = "GOOGLE_MAPS_API_KEY";
 
@@ -51,7 +52,7 @@ impl GoogleLocFinder {
         let from_remote_opts = resp_opts.const_label("source", "remote");
 
         GoogleLocFinder {
-            client: cache::caching_client(),
+            client: cache::caching_client(&REDIS.pool),
             api_key: api_key.to_string(),
 
             geocode_req_counter: metrics::REGISTRY.register_counter("Google Maps API (geocode) requests", geocode_opts),
