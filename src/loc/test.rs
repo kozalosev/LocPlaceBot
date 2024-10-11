@@ -1,10 +1,6 @@
 use std::collections::HashMap;
 use async_trait::async_trait;
-use http::Method;
-use reqwest_middleware::ClientWithMiddleware;
 use crate::loc;
-use crate::loc::cache::{caching_client, test_utils};
-use crate::testutils::start_redis;
 use super::SearchChain;
 use super::Location;
 use super::LocResult;
@@ -32,21 +28,6 @@ async fn test_search_chain() {
     }
 }
 
-#[tokio::test]
-async fn test_cache() {
-    let (_redis_container, redis_pool) = start_redis().await;
-    let client = caching_client(&redis_pool);
-    
-    send_request(Method::GET, &client).await;
-    send_request(Method::GET, &client).await;
-    verify_requests_count(1);
-
-    // POST requests are not cached
-    send_request(Method::POST, &client).await;
-    send_request(Method::POST, &client).await;
-    verify_requests_count(3);
-}
-
 fn stub_finder(result: Vec<Location>) -> loc::LocFinderChainWrapper {
     loc::finder("", StubLocFinder { result })
 }
@@ -68,13 +49,4 @@ impl LocFinder for StubLocFinder {
     async fn find(&self, _: &str, _: &str, _: Option<(f64, f64)>) -> LocResult {
         Ok(self.result.clone())
     }
-}
-
-async fn send_request(method: Method, client: &ClientWithMiddleware) {
-    client.request(method, "https://foo.bar").send().await
-        .expect("couldn't send request");
-}
-
-fn verify_requests_count(count: usize) {
-    unsafe { assert_eq!(count, test_utils::COUNTER) }
 }

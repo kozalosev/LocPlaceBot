@@ -10,6 +10,8 @@ pub mod cache;
 
 #[cfg(test)]
 mod test;
+#[cfg(test)]
+mod cache_test;
 
 const DISABLE_ENV_PREFIX: &str = "DISABLE_FINDER_";
 

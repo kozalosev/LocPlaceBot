@@ -11,9 +11,13 @@ use serde::{Deserialize, Serialize};
 use serde::de::DeserializeOwned;
 
 pub fn caching_client(redis_pool: &mobc::Pool<mobc_redis::RedisConnectionManager>) -> ClientWithMiddleware {
+    caching_client_builder(redis_pool).build()
+}
+
+pub fn caching_client_builder(redis_pool: &mobc::Pool<mobc_redis::RedisConnectionManager>) -> ClientBuilder {
     let client = reqwest::Client::builder()
         .build().expect("couldn't create an HTTP client");
-    let cb = ClientBuilder::new(client)
+    ClientBuilder::new(client)
         .with(Cache(HttpCache {
             mode: CacheMode::Default,
             manager: RedisCacheManager::new(redis_pool.clone()),
@@ -25,9 +29,7 @@ pub fn caching_client(redis_pool: &mobc::Pool<mobc_redis::RedisConnectionManager
                 cache_key: Some(Arc::new(|parts| format!("loc-cache:{}:{}", parts.method, parts.uri))),
                 ..HttpCacheOptions::default()
             },
-        }));
-    #[cfg(test)] let cb = cb.with(test_utils::RequestStoppingCounter);
-    cb.build()
+        }))
 }
 
 #[derive(Clone, Constructor)]
@@ -117,29 +119,4 @@ fn serialize(value: impl Serialize) -> Result<Vec<u8>, bincode::error::EncodeErr
 fn deserialize<T: DeserializeOwned>(bytes: Vec<u8>) -> Result<T, bincode::error::DecodeError> {
     bincode::serde::decode_from_slice(bytes.as_slice(), bincode::config::standard())
         .map(|(t, _)| t)
-}
-
-#[cfg(test)]
-pub mod test_utils {
-    use axum::http::Extensions;
-    use http::header::CACHE_CONTROL;
-    use http::HeaderValue;
-    use reqwest::{Body, Request};
-    use reqwest_middleware::{Middleware, Next};
-    
-    pub static mut COUNTER: usize = 0;
-
-    pub(super) struct RequestStoppingCounter;
-    
-    #[async_trait::async_trait]
-    impl Middleware for RequestStoppingCounter {
-        async fn handle(&self, _req: Request, _extensions: &mut Extensions, _next: Next<'_>) -> reqwest_middleware::Result<reqwest::Response> {
-            unsafe { COUNTER += 1; }
-
-            let mut resp = http::Response::new(Body::from("200 OK"));
-            let headers = resp.headers_mut();
-            headers.insert(CACHE_CONTROL, HeaderValue::from_static("max-age=604800"));
-            Ok(reqwest::Response::from(resp))
-        }
-    }
 }
