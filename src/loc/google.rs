@@ -3,6 +3,8 @@ use async_trait::async_trait;
 use once_cell::sync::Lazy;
 use reqwest_middleware::ClientWithMiddleware;
 use strum_macros::EnumString;
+use serde::Serialize;
+use serde_json::json;
 use super::cache::WithCachedResponseCounters;
 use super::{cache, Location, LocFinder, LocResult, SEARCH_RADIUS, SearchParams};
 use crate::metrics;
@@ -18,9 +20,7 @@ static GAPI_MODE: Lazy<GoogleAPIMode> = Lazy::new(|| {
 
 #[derive(EnumString)]
 pub enum GoogleAPIMode {
-    Place,      // Find Place request
     Text,       // Text Search request
-    GeoPlace,   // Geocoding request first, Find Place if ZERO_RESULTS
     GeoText,    // Geocoding request first, Text Search if ZERO_RESULTS
 }
 
@@ -34,17 +34,43 @@ pub struct GoogleLocFinder {
     api_key: String,
 
     geocode_req_counter: prometheus::Counter,
-    place_req_counter: prometheus::Counter,
     text_req_counter: prometheus::Counter,
     cached_resp_counter: prometheus::Counter,
     fetched_resp_counter: prometheus::Counter,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all="camelCase")]
+struct SearchQuery {
+    text_query: String,
+    language_code: String,
+    location_bias: Option<serde_json::Value>
+}
+
+impl SearchQuery {
+    fn new(address: &str, lang_code: &str, location: Option<(f64, f64)>) -> Self {
+        let viewport = location
+            .map(|(lat, lng)| json!({
+                "circle": {
+                    "center": {
+                        "latitude": lat,
+                        "longitude": lng
+                    },
+                    "radius": *SEARCH_RADIUS
+                }
+            }));
+        Self {
+            text_query: address.to_string(),
+            language_code: lang_code.to_string(),
+            location_bias: viewport
+        }
+    }
 }
 
 impl GoogleLocFinder {
     pub fn init(api_key: &str) -> GoogleLocFinder {
         let base_opts = prometheus::Opts::new("google_maps_api_requests_total", "count of requests to the Google Maps API");
         let geocode_opts = base_opts.clone().const_label("API", "geocode");
-        let place_opts   = base_opts.clone().const_label("API", "place");
         let text_opts    = base_opts.clone().const_label("API", "place-text");
 
         let resp_opts = prometheus::Opts::new("google_maps_api_responses_total", "count of responses from the Google Maps API split by the source");
@@ -56,7 +82,6 @@ impl GoogleLocFinder {
             api_key: api_key.to_string(),
 
             geocode_req_counter: metrics::REGISTRY.register_counter("Google Maps API (geocode) requests", geocode_opts),
-            place_req_counter:   metrics::REGISTRY.register_counter("Google Maps API (place) requests", place_opts),
             text_req_counter:    metrics::REGISTRY.register_counter("Google Maps API (place, text) requests", text_opts),
             cached_resp_counter:  metrics::REGISTRY.register_counter("Google Maps API requests", from_cache_opts),
             fetched_resp_counter: metrics::REGISTRY.register_counter("Google Maps API requests", from_remote_opts),
@@ -69,14 +94,6 @@ impl GoogleLocFinder {
     }
 
     async fn find(&self, address: &str, params: SearchParams<'_>) -> LocResult {
-        let mut results = self.find_geo(address, params).await?;
-        if results.is_empty() {
-            results = self.find_place(address, params).await?;
-        }
-        Ok(results)
-    }
-
-    async fn find_more(&self, address: &str, params: SearchParams<'_>) -> LocResult {
         let mut results = self.find_geo(address, params).await?;
         if results.is_empty() {
             results = self.find_text(address, params).await?;
@@ -99,46 +116,27 @@ impl GoogleLocFinder {
         log::info!("response from Google Maps Geocoding API: {json}");
 
         let results = json["results"].as_array().unwrap().iter()
-            .filter_map(map_resp)
+            .filter_map(map_resp_geo)
             .collect();
-        Ok(results)
-    }
-
-    async fn find_place(&self, address: &str, params: SearchParams<'_>) -> LocResult {
-        self.place_req_counter.inc();
-        let location_part = params.location
-            .map(|(lat, lng)| format!("&locationbias=circle:{}@{lat},{lng}", *SEARCH_RADIUS))
-            .unwrap_or_default();
-        let url = format!("https://maps.googleapis.com/maps/api/place/findplacefromtext/json?key={}&input={}&inputtype=textquery&language={}&fields=formatted_address,geometry,name{location_part}",
-                          self.api_key, address, params.lang_code);
-        let resp = self.client.get(url).send().await?;
-        self.inc_resp_counter(&resp);
-
-        let json = resp.json::<serde_json::Value>().await?;
-        log::info!("response from Google Maps Find Place API: {json}");
-
-        let results: Vec<Location> = json["candidates"].as_array().unwrap().iter()
-            .filter_map(map_resp)
-            .collect();
-
         Ok(results)
     }
 
     async fn find_text(&self, address: &str, params: SearchParams<'_>) -> LocResult {
         self.text_req_counter.inc();
-        let location_part = params.location
-            .map(|(lat, lng)| format!("&location={lat},{lng}"))
-            .unwrap_or_default();
-        let url = format!("https://maps.googleapis.com/maps/api/place/textsearch/json?key={}&query={}&language={}&region={}{location_part}",
-                          self.api_key, address, params.lang_code, params.lang_code);
-        let resp = self.client.get(url).send().await?;
+        // TODO: POST requests is not cached currently. This must be fixed before use in production!
+        let resp = self.client.post("https://places.googleapis.com/v1/places:searchText")
+            .header(http::header::CONTENT_TYPE.as_str(), mime::APPLICATION_JSON.as_ref())
+            .header("X-Goog-Api-Key", &self.api_key)
+            .header("X-Goog-FieldMask", "places.displayName,places.formattedAddress,places.location")
+            .json(&SearchQuery::new(address, params.lang_code, params.location))
+            .send().await?;
         self.inc_resp_counter(&resp);
 
         let json = resp.json::<serde_json::Value>().await?;
         log::info!("response from Google Maps Text Search API: {json}");
 
-        let results: Vec<Location> = json["results"].as_array().unwrap().iter()
-            .filter_map(map_resp)
+        let results: Vec<Location> = json["places"].as_array().unwrap().iter()
+            .filter_map(map_resp_place)
             .collect();
 
         Ok(results)
@@ -150,10 +148,8 @@ impl LocFinder for GoogleLocFinder {
     async fn find(&self, query: &str, lang_code: &str, location: Option<(f64, f64)>) -> LocResult {
         let params = SearchParams { lang_code, location };
         match *GAPI_MODE {
-            GoogleAPIMode::Place => self.find_place(query, params).await,
             GoogleAPIMode::Text => self.find_text(query, params).await,
-            GoogleAPIMode::GeoPlace => self.find(query, params).await,
-            GoogleAPIMode::GeoText => self.find_more(query, params).await,
+            GoogleAPIMode::GeoText => self.find(query, params).await,
         }
     }
 }
@@ -168,7 +164,7 @@ impl WithCachedResponseCounters for GoogleLocFinder {
     }
 }
 
-fn map_resp(v: &serde_json::Value) -> Option<Location> {
+fn map_resp_geo(v: &serde_json::Value) -> Option<Location> {
     let address = Some(v["formatted_address"].as_str()?.to_string());
 
     let loc = &v["geometry"]["location"];
@@ -177,6 +173,21 @@ fn map_resp(v: &serde_json::Value) -> Option<Location> {
 
     Some(Location {
         address, latitude, longitude
+    })
+}
+
+fn map_resp_place(v: &serde_json::Value) -> Option<Location> {
+    let name = v["displayName"]["text"].as_str()?.to_string();
+    let address = v["formattedAddress"].as_str()?.to_string();
+    let full_address = Some(format!("{name}, {address}"));
+
+    let loc = &v["location"];
+    let latitude: f64 = loc["latitude"].as_f64()?;
+    let longitude: f64 = loc["longitude"].as_f64()?;
+
+    Some(Location {
+        address: full_address,
+        latitude, longitude
     })
 }
 

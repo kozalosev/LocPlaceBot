@@ -1472,6 +1472,7 @@ dependencies = [
  "http-cache-semantics",
  "hyper 1.4.1",
  "log",
+ "mime",
  "mobc",
  "mobc-redis",
  "once_cell",
