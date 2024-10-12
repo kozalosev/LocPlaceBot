@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use http::Method;
+use reqwest::Body;
 use reqwest_middleware::ClientWithMiddleware;
 use crate::loc::cache::caching_client_builder;
 use crate::testutils::start_redis;
@@ -12,20 +13,26 @@ async fn test_cache() {
         .with_arc(middleware.clone())
         .build();
 
-    send_request(Method::GET, &client).await;
-    send_request(Method::GET, &client).await;
+    send_get_request(&client).await;
+    send_get_request(&client).await;
     middleware.verify_requests_count(1);
 
     middleware.reset();
 
-    // POST requests are not cached
-    send_request(Method::POST, &client).await;
-    send_request(Method::POST, &client).await;
+    send_request(Method::POST, &client, "req-1").await;
+    send_request(Method::POST, &client, "req-1").await;
+    send_request(Method::POST, &client, "req-2").await;
     middleware.verify_requests_count(2);
 }
 
-async fn send_request(method: Method, client: &ClientWithMiddleware) {
-    client.request(method, "https://foo.bar").send().await
+async fn send_get_request(client: &ClientWithMiddleware) {
+    send_request(Method::GET, client, "").await
+}
+
+async fn send_request(method: Method, client: &ClientWithMiddleware, body: &str) {
+    client.request(method, "https://foo.bar")
+        .body(Body::from(body.to_string()))
+        .send().await
         .expect("couldn't send request");
 }
 
