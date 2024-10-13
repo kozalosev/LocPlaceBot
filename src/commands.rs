@@ -7,7 +7,7 @@ use teloxide::utils::command::BotCommands;
 use crate::handlers;
 
 pub async fn set_my_commands(bot: &Bot, lang_code: &str) -> Result<(), RequestError> {
-    let commands = vec![
+    let commands = [
         handlers::Command::bot_commands(),
         handlers::options::location::Commands::bot_commands(),
     ];
@@ -17,7 +17,7 @@ pub async fn set_my_commands(bot: &Bot, lang_code: &str) -> Result<(), RequestEr
         .into_iter()
         .filter(|cmd| !cmd.description.is_empty())
         .map(|mut cmd| {
-            cmd.description = t!(&format!("cmd-description.{}", cmd.description), locale = lang_code);
+            cmd.description = t!(format!("cmd-description.{}", cmd.description), locale = lang_code).to_string();
             cmd
         })
         .collect();

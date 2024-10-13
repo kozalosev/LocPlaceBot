@@ -1,19 +1,21 @@
 use std::str::FromStr;
 use std::sync::Arc;
+use anyhow::anyhow;
 use derive_more::{Constructor, Display};
 use rust_i18n::t;
 use teloxide::Bot;
-use teloxide::dispatching::dialogue::{GetChatId, InMemStorage};
+use teloxide::dispatching::dialogue::GetChatId;
 use teloxide::payloads::{AnswerCallbackQuerySetters, EditMessageTextSetters};
 use teloxide::prelude::{CallbackQuery, UserId};
 use teloxide::requests::Requester;
+use teloxide::types::MaybeInaccessibleMessage;
 use teloxide::types::ParseMode::Html;
 use thiserror::Error;
-use crate::eula;
+use crate::{eula, CommandCacheStorage};
 use crate::handlers::HandlerResult;
 use crate::handlers::options::build_agreement_text;
 use crate::handlers::options::callback::{CallbackHandlerDIParams, CallbackPreprocessorResult, preprocess_callback, UserIdAware};
-use crate::handlers::options::location::{LocationDialogue, LocationState, send_location_request};
+use crate::handlers::options::location::{LocationDialogue, send_location_request};
 use crate::users::{Consent, UserService, UserServiceClient, UserServiceClientGrpc};
 use crate::utils::get_full_name;
 
@@ -60,7 +62,7 @@ impl FromStr for SavedSetCommand {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.split_once(':') {
-            Some((param, value)) if param == "lang" => Ok(Self::Language(value.to_owned())),
+            Some(("lang", value)) => Ok(Self::Language(value.to_owned())),
             None if s == "loc" => Ok(Self::Location),
             _ => Err(())
         }
@@ -80,7 +82,7 @@ pub fn callback_filter(query: CallbackQuery) -> bool {
 }
 
 pub async fn callback_handler(bot: Bot, query: CallbackQuery, usr_client: UserService<UserServiceClientGrpc>,
-                              dialogue_storage: Arc<InMemStorage<LocationState>>) -> HandlerResult {
+                              dialogue_storage: Arc<CommandCacheStorage>) -> HandlerResult {
     let maybe_chat_id = query.chat_id();
     let data = ConsentCallbackData::try_from(query.data.clone().ok_or("no data")?)?;
     let ctx = match preprocess_callback(CallbackHandlerDIParams::new(&bot, &query, usr_client), &data).await? {
@@ -89,7 +91,7 @@ pub async fn callback_handler(bot: Bot, query: CallbackQuery, usr_client: UserSe
     };
 
     match query.message {
-        Some(msg) if msg.text().is_some() => {
+        Some(MaybeInaccessibleMessage::Regular(msg)) if msg.text().is_some() => {
             let eula_hash = eula::get_in(&data.lang_code).hash;
             let consent = Consent::new(msg.id, eula_hash);
             let name = get_full_name(&query.from);
@@ -104,8 +106,10 @@ pub async fn callback_handler(bot: Bot, query: CallbackQuery, usr_client: UserSe
             ctx.answer.show_alert(false)
                 .text(t!("registration.consent.ok", locale = &ctx.lang_code))
         },
-        _ => ctx.answer.show_alert(true)
-            .text(t!("error.old-message", locale = &ctx.lang_code))
+        Some(MaybeInaccessibleMessage::Inaccessible(_)) => ctx.answer.show_alert(true)
+            .text(t!("error.old-message", locale = &ctx.lang_code)),
+        Some(MaybeInaccessibleMessage::Regular(_))      => Err(anyhow!("no text of the message"))?,
+        None                                            => Err(anyhow!("no message in the callback query"))?,
     }.await?;
 
     let chat_id = maybe_chat_id.ok_or("no chat_id")?;

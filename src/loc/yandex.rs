@@ -7,6 +7,7 @@ use strum_macros::EnumString;
 use super::cache::WithCachedResponseCounters;
 use super::{cache, get_bounds, Location, LocFinder, LocResult, SEARCH_RADIUS, SearchParams};
 use crate::metrics;
+use crate::redis::REDIS;
 
 const GEOCODER_ENV_API_KEY: &str = "YANDEX_MAPS_GEOCODER_API_KEY";
 const PLACES_ENV_API_KEY: &str   = "YANDEX_MAPS_PLACES_API_KEY";
@@ -52,7 +53,7 @@ impl YandexLocFinder {
         let from_remote_opts = resp_opts.const_label("source", "remote");
 
         YandexLocFinder {
-            client: cache::caching_client(),
+            client: cache::caching_client(&REDIS.pool),
 
             geocode_api_key,
             places_api_key,

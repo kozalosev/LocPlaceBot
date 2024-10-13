@@ -1,10 +1,12 @@
 use std::str::FromStr;
 use anyhow::anyhow;
+use derive_more::Constructor;
 use mobc_redis::{redis, RedisConnectionManager};
 use teloxide::types::{CallbackQuery, InlineQuery, Message, UserId};
 
 const REDIS_KEY_PREFIX: &str = "rate-limiter.";
 
+#[derive(Constructor)]
 pub struct RequestsLimiter {
     pool: mobc::Pool<RedisConnectionManager>,
     max_allowed: i32,
@@ -12,22 +14,10 @@ pub struct RequestsLimiter {
 }
 
 impl RequestsLimiter {
-    pub fn new(client: redis::Client, max_allowed: i32, timeframe: usize) -> Self {
-        let manager = RedisConnectionManager::new(client);
-        let pool = mobc::Pool::new(manager);
-        RequestsLimiter { pool, max_allowed, timeframe }
-    }
-
-    pub fn from_env() -> Self {
-        let host: String = resolve_mandatory_env("REDIS_HOST");
-        let port: u16 = resolve_mandatory_env("REDIS_PORT");
-        let password: String = resolve_mandatory_env("REDIS_PASSWORD");
+    pub fn from_env(redis_pool: &mobc::Pool<RedisConnectionManager>) -> Self {
         let max_allowed = resolve_optional_env("REQUESTS_LIMITER_MAX_ALLOWED", 10);
         let timeframe = resolve_optional_env("REQUESTS_LIMITER_TIMEFRAME", 60);
-
-        let client = redis::Client::open(format!("redis://:{password}@{host}:{port}/"))
-            .expect("Cannot connect to Redis");
-        Self::new(client, max_allowed, timeframe)
+        Self::new(redis_pool.clone(), max_allowed, timeframe)
     }
 
     pub async fn is_req_allowed(&self,  entity: &impl GetUserId) -> bool {
@@ -63,7 +53,7 @@ impl RequestsLimiter {
             else {
                 return Err(anyhow!("unexpected non-bulk type of new_val"))
             };
-        let redis::Value::Int(new_val) = new_val.get(0)
+        let redis::Value::Int(new_val) = new_val.first()
             .ok_or(anyhow!("unexpected empty vector in a bulk"))?
             else {
                 return Err(anyhow!("unexpected non-int type of new_val"))
@@ -80,7 +70,7 @@ pub trait GetUserId {
 
 impl GetUserId for Message {
     fn user_id(&self) -> Option<UserId> {
-        self.from()
+        self.from.as_ref()
             .map(|u| u.id)
     }
 }
@@ -97,18 +87,7 @@ impl GetUserId for InlineQuery {
     }
 }
 
-fn resolve_mandatory_env<T: FromStr + ToString>(key: &str) -> T {
-    let val = std::env::var(key)
-        .expect(format!("{key} is not set but mandatory!").as_str());
-    let val = T::from_str(val.as_str())
-        .ok().expect(format!("Couldn't convert {key} for some reason").as_str());
-    if key.to_lowercase().contains("password") {
-        log::info!("{} is set to ***", key);
-    } else {
-        log::info!("{} is set to {}", key, val.to_string());
-    }
-    val
-}
+
 
 fn resolve_optional_env<T: FromStr + ToString>(key: &str, default: T) -> T {
     let val = std::env::var(key)

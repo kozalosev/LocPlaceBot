@@ -14,18 +14,18 @@ pub struct EndUserAgreement {
 pub static EULA_EN: Lazy<EndUserAgreement> = Lazy::new(|| {
     EndUserAgreement {
         text: EN_EULA_TEXT,
-        hash: &*EN_EULA_HASH,
+        hash: &EN_EULA_HASH,
     }
 });
 
 pub static EULA_RU: Lazy<EndUserAgreement> = Lazy::new(|| EndUserAgreement {
     text: RU_EULA_TEXT,
-    hash: &*RU_EULA_HASH,
+    hash: &RU_EULA_HASH,
 });
 
 pub fn get_in(lang_code: &str) -> &EndUserAgreement {
     match lang_code {
-        "ru" => &*EULA_RU,
-        _    => &*EULA_EN
+        "ru" => &EULA_RU,
+        _    => &EULA_EN
     }
 }

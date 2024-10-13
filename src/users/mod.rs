@@ -39,6 +39,7 @@ impl From<&str> for Hello {
     }
 }
 
+#[allow(clippy::from_over_into)]
 impl Into<Service> for Hello {
     fn into(self) -> Service {
         Service {
@@ -54,6 +55,7 @@ pub struct Consent {
     eula_hash: &'static str,
 }
 
+#[allow(clippy::from_over_into)]
 impl Into<serde_json::Value> for Consent {
     fn into(self) -> serde_json::Value {
         json!({

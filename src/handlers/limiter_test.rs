@@ -1,14 +1,12 @@
-use mobc_redis::redis::Client;
 use teloxide::prelude::UserId;
-use testcontainers::{clients, Container, core::WaitFor, images::generic::GenericImage};
 use crate::handlers::limiter::{GetUserId, RequestsLimiter};
+use crate::testutils::start_redis;
 
 #[tokio::test]
 async fn test_rate_limiter() {
     pretty_env_logger::init();
-
-    let docker = clients::Cli::default();
-    let (_redis_container, redis_client) = start_redis(&docker);
+    
+    let (_redis_container, redis_client) = start_redis().await;
     let limiter = RequestsLimiter::new(redis_client, 2, 60);
     let entity = &Entity{};
 
@@ -17,18 +15,6 @@ async fn test_rate_limiter() {
     assert!(limiter.is_req_allowed(entity).await);
     // the third is forbidden
     assert!(!limiter.is_req_allowed(entity).await);
-}
-
-fn start_redis(docker: &clients::Cli) -> (Container<GenericImage>, Client) {
-    let redis_image = GenericImage::new("redis", "latest")
-        .with_exposed_port(6379)
-        .with_wait_for(WaitFor::message_on_stdout("Ready to accept connections"));
-
-    let redis_container = docker.run(redis_image);
-    let redis_port = redis_container.get_host_port_ipv4(6379);
-    let redis_client = Client::open(format!("redis://127.0.0.1:{redis_port}"))
-        .expect("couldn't establish a connection with Redis");
-    (redis_container, redis_client)
 }
 
 struct Entity {}

@@ -44,12 +44,12 @@ pub fn init() -> axum::Router {
     let prometheus = REGISTRY
         .register(&INLINE_COUNTER.allowed)
         .register(&INLINE_COUNTER.forbidden)
-        .register(&*INLINE_CHOSEN_COUNTER)
-        .register(&*MESSAGE_COUNTER)
-        .register(&*CMD_START_COUNTER)
-        .register(&*CMD_HELP_COUNTER)
-        .register(&*CMD_LOC_COUNTER)
-        .register(&*CMD_SET_LANGUAGE_COUNTER)
+        .register(&INLINE_CHOSEN_COUNTER)
+        .register(&MESSAGE_COUNTER)
+        .register(&CMD_START_COUNTER)
+        .register(&CMD_HELP_COUNTER)
+        .register(&CMD_LOC_COUNTER)
+        .register(&CMD_SET_LANGUAGE_COUNTER)
         .register(&CMD_SET_LOCATION_COUNTER.invoked)
         .register(&CMD_SET_LOCATION_COUNTER.finished)
         .unwrap();
@@ -84,7 +84,7 @@ pub struct Registry(prometheus::Registry);
 impl Counter {
     fn new(name: &str, opts: Opts) -> Counter {
         let c = prometheus::Counter::with_opts(opts)
-            .expect(format!("unable to create {name} counter").as_str());
+            .unwrap_or_else(|_| panic!("unable to create {name} counter"));
         Counter { inner: c, name: name.to_string() }
     }
 
@@ -107,15 +107,15 @@ impl Registry {
     /// Register additional counters by our own structs.
     pub fn register_counter(&self, name: &str, opts: Opts) -> prometheus::Counter {
         let c = prometheus::Counter::with_opts(opts)
-            .expect(format!("unable to create {name} counter").as_str());
+            .unwrap_or_else(|_| panic!("unable to create {name} counter"));
         self.0.register(Box::new(c.clone()))
-            .expect(format!("unable to register the {name} counter").as_str());
+            .unwrap_or_else(|_| panic!("unable to register the {name} counter"));
         c
     }
 
     fn register(&self, counter: &Counter) -> &Self {
         self.0.register(Box::new(counter.inner.clone()))
-            .expect(format!("unable to register the {} counter", counter.name).as_str());
+            .unwrap_or_else(|_| panic!("unable to register the {} counter", counter.name));
         self
     }
 

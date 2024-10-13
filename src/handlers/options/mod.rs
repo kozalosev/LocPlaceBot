@@ -44,7 +44,7 @@ pub(super) async fn cmd_set_language_handler(usr_client: impl UserServiceClient,
             let requested_code = fallback_for.as_ref().unwrap();
             log::warn!("unsupported language was requested: {}", requested_code);
             let lang_code = &ensure_lang_code(user.id, None, &usr_client.into()).await;
-            return Ok(t!("set-option.language.unsupported", locale = lang_code).into())
+            return Ok(t!("set-option.language.unsupported", locale = lang_code).to_string().into())
         }
     }
 
@@ -52,7 +52,7 @@ pub(super) async fn cmd_set_language_handler(usr_client: impl UserServiceClient,
     match usr_client.get(user.id).await? {
         Some(_) => {
             usr_client.set_language(user.id, &code).await?;
-            Ok(t!("set-option.language.success", locale = &code).into())
+            Ok(t!("set-option.language.success", locale = &code).to_string().into())
         },
         None => register_user(usr_client, user, SavedSetCommand::Language(code)).await
     }

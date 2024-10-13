@@ -21,7 +21,7 @@ async fn test_search_chain() {
     for test_data in HashMap::from([("en", global_address), ("ru", ru_address)]) {
         let result = chain.find("", test_data.0, None).await;
         assert_eq!(result.len(), 1);
-        let addr = result.get(0).unwrap()
+        let addr = result.first().unwrap()
             .address.clone()
             .expect("address must be present in the stub data!");
         assert_eq!(addr, test_data.1.to_string());
