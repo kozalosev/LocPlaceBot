@@ -29,6 +29,8 @@ set-option:
     success: "Your location has been saved successfully!"
     remove-keyboard: "<i>Removing the reply keyboard…</i>"
 error:
+  query:
+    empty: "Please, specify a place you want to find when invoking the command: `/loc Eiffel Tower` for example."
   old-message: "The message is too old :("
   service:
     user:

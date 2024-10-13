@@ -18,7 +18,7 @@ use crate::utils::{ensure_lang_code, try_determine_location};
 use teloxide::prelude::*;
 use teloxide::dispatching::dialogue::GetChatId;
 use teloxide::types::{Me, ReplyMarkup};
-use teloxide::types::ParseMode::Html;
+use teloxide::types::ParseMode::{Html, MarkdownV2};
 use teloxide::utils::command::BotCommands;
 use crate::handlers::limiter::RequestsLimiter;
 use crate::handlers::options::LanguageCode;
@@ -175,11 +175,15 @@ pub async fn callback_handler(bot: Bot, q: CallbackQuery) -> HandlerResult {
 }
 
 async fn cmd_loc_handler(bot: Bot, msg: Message, usr_client: UserService<impl UserServiceClient>) -> HandlerResult {
-    let text = msg.text().ok_or("no text")?.to_string();
+    let from = msg.from.as_ref().ok_or("no from")?;
+    let lang_code = &ensure_lang_code(from.id, from.language_code.clone(), &usr_client).await;
+
+    let text = match msg.text() {
+        None => return send_error(bot, msg, "error.query.empty", lang_code).await,
+        Some(text) => text.to_string()
+    };
     log::info!("Got a message query: {}", text);
 
-    let from = msg.from.ok_or("no from")?;
-    let lang_code = &ensure_lang_code(from.id, from.language_code.clone(), &usr_client).await;
     let location = try_determine_location(from.id, &usr_client).await;
     let locations = resolve_locations(text, lang_code, location).await?;
     senders::send_locations_as_messages(bot, msg.chat.id, locations, lang_code).await?;
@@ -214,4 +218,12 @@ async fn process_answer_message(bot: Bot, chat_id: ChatId, answer: AnswerMessage
     req.reply_markup = keyboard;
     req.await?;
     Ok(())
+}
+
+async fn send_error(bot: Bot, msg: Message, error_key: &str, lang_code: &str) -> HandlerResult {
+    bot.send_message(msg.chat.id, t!(error_key, locale = lang_code))
+        .parse_mode(MarkdownV2)
+        .await
+        .map(|_| ())
+        .map_err(Into::into)
 }
