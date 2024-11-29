@@ -39,6 +39,9 @@ i18n!(fallback = "en");    // load localizations with default parameters
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    #[cfg(debug_assertions)]
+    dotenvy::dotenv()?;
+    
     pretty_env_logger::init();
     handlers::preload_env_vars();
 
