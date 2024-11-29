@@ -21,7 +21,8 @@ registration:
 set-option:
   language:
     success: "👌🏼👍🏼"
-    unsupported: "Unfortunately, this language is not supported yet. It would be very nice if you contribute to our project and help us to [translate](https://github.com/kozalosev/LocPlaceBot/blob/main/locales/en.yml) the bot to your language."
+    empty: "Please, specify a language you want to use when invoking the command: <code>/setlang ru</code> for example."
+    unsupported: "Unfortunately, this language is not supported yet. It would be very nice if you contribute to our project and help us to <a href=\"https://github.com/kozalosev/LocPlaceBot/blob/main/locales/en.yml\">translate</a> the bot to your language."
   location:
     message:
       text: "Send me your location, please"
