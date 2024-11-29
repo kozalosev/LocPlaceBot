@@ -25,6 +25,7 @@ services:
       - USER_CACHE_TIME_SECS
       - CACHE_CLEAN_UP_INTERVAL_SECS
       - SEARCH_RADIUS_METERS
+      - QUERY_CHECK_MODE
     expose:
       - 8080
     networks:
