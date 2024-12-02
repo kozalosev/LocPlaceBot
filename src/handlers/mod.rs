@@ -2,11 +2,15 @@ pub mod options;
 
 mod senders;
 mod limiter;
+mod query;
 
+#[cfg(test)]
+mod test;
 #[cfg(test)]
 mod limiter_test;
 
 use std::clone::Clone;
+use std::ops::Not;
 use anyhow::anyhow;
 use derive_more::From;
 use regex::Regex;
@@ -18,10 +22,11 @@ use crate::utils::{ensure_lang_code, try_determine_location};
 use teloxide::prelude::*;
 use teloxide::dispatching::dialogue::GetChatId;
 use teloxide::types::{Me, ReplyMarkup};
-use teloxide::types::ParseMode::Html;
+use teloxide::types::ParseMode::{Html, MarkdownV2};
 use teloxide::utils::command::BotCommands;
 use crate::handlers::limiter::RequestsLimiter;
 use crate::handlers::options::LanguageCode;
+use crate::handlers::query::{QueryCheckMode, QUERY_CHECK_MODE};
 use crate::redis::REDIS;
 use crate::users::{UserService, UserServiceClient, UserServiceClientGrpc};
 
@@ -40,8 +45,10 @@ pub enum Command {
 
 pub type HandlerResult = Result<(), Box<dyn std::error::Error + Send + Sync>>;
 
-static COORDS_REGEXP: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?P<latitude>-?\d{1,2}(\.\d+)?),? (?P<longitude>-?\d{1,3}(\.\d+)?)")
-    .expect("Invalid regex!"));
+static COORDS_REGEXP: Lazy<Regex> = Lazy::new(|| Regex::new(r"^(?P<latitude>-?\d{1,2}([.,]\d+)?),?\s+(?P<longitude>-?\d{1,3}([.,]\d+)?)$")
+    .expect("Invalid coords regex!"));
+static QUERY_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r#"(\pL(\pM)?){3,}"#)
+    .expect("Invalid query regex!"));
 static FINDER: Lazy<SearchChain> = Lazy::new(|| {
     let osm = finder("OSM", osm::OpenStreetMapLocFinder::new());
     let yandex = finder("YANDEX", yandex::YandexLocFinder::from_env());
@@ -63,13 +70,16 @@ pub fn preload_env_vars() {
     google::preload_env_vars();
     yandex::preload_env_vars();
 
+    query::preload_env_vars();
+
     let _ = *COORDS_REGEXP;
+    let _ = *QUERY_REGEX;
     let _ = *FINDER;
     let _ = *INLINE_REQUESTS_LIMITER;
 }
 
 pub async fn inline_handler(bot: Bot, q: InlineQuery, usr_client: UserService<UserServiceClientGrpc>) -> HandlerResult {
-    if q.query.is_empty() || rate_limit_exceeded(&q).await {
+    if !is_query_correct(&q.query) || rate_limit_exceeded(&q).await {
         bot.answer_inline_query(q.id, vec![]).await?;
         return Ok(());
     }
@@ -96,6 +106,14 @@ async fn rate_limit_exceeded(q: &InlineQuery) -> bool {
 pub async fn inline_chosen_handler(_: Bot, _: ChosenInlineResult) -> HandlerResult {
     metrics::INLINE_CHOSEN_COUNTER.inc();
     Ok(())
+}
+
+fn is_query_correct(query: &str) -> bool {
+    query.is_empty().not() && (
+        QUERY_REGEX.is_match(query)   ||
+        COORDS_REGEXP.is_match(query) ||
+        *QUERY_CHECK_MODE != QueryCheckMode::Regex
+    )
 }
 
 #[derive(From)]
@@ -175,11 +193,15 @@ pub async fn callback_handler(bot: Bot, q: CallbackQuery) -> HandlerResult {
 }
 
 async fn cmd_loc_handler(bot: Bot, msg: Message, usr_client: UserService<impl UserServiceClient>) -> HandlerResult {
-    let text = msg.text().ok_or("no text")?.to_string();
+    let from = msg.from.as_ref().ok_or("no from")?;
+    let lang_code = &ensure_lang_code(from.id, from.language_code.clone(), &usr_client).await;
+
+    let text = match msg.text() {
+        None => return send_error(bot, msg, "error.query.empty", lang_code).await,
+        Some(text) => text.to_string()
+    };
     log::info!("Got a message query: {}", text);
 
-    let from = msg.from.ok_or("no from")?;
-    let lang_code = &ensure_lang_code(from.id, from.language_code.clone(), &usr_client).await;
     let location = try_determine_location(from.id, &usr_client).await;
     let locations = resolve_locations(text, lang_code, location).await?;
     senders::send_locations_as_messages(bot, msg.chat.id, locations, lang_code).await?;
@@ -214,4 +236,12 @@ async fn process_answer_message(bot: Bot, chat_id: ChatId, answer: AnswerMessage
     req.reply_markup = keyboard;
     req.await?;
     Ok(())
+}
+
+async fn send_error(bot: Bot, msg: Message, error_key: &str, lang_code: &str) -> HandlerResult {
+    bot.send_message(msg.chat.id, t!(error_key, locale = lang_code))
+        .parse_mode(MarkdownV2)
+        .await
+        .map(|_| ())
+        .map_err(Into::into)
 }

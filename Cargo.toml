@@ -15,9 +15,10 @@ axum = "0.7.7"
 axum-prometheus = "0.7.0"
 prometheus = "0.13.4"
 hyper = "1.4.1"
-# Logging
+# Logging and envs
 log = "0.4.22"
 pretty_env_logger = "0.5.0"
+dotenvy = "0.15.7"
 # HTTP client with caching
 reqwest = { version = "0.12.8", default-features = false, features = ["rustls-tls", "json"] }
 reqwest-middleware = { version = "0.3.3", features = ["json"] }
@@ -36,14 +37,13 @@ prost = "0.13.3"
 prost-types = "0.13.3"
 prost-wkt-types = "0.6.0"
 # Redis
-redis = { version = "0.27.4", features = ["ahash", "tokio-comp", "connection-manager"] }
 mobc = "0.8.4"
 mobc-redis = "0.8.2"
 # Derive macros
 strum = "0.26.3"
 strum_macros = "0.26.4"
 derive_more = { version = "1.0.0", features = ["display", "from", "constructor", "error"] }
-thiserror = "1.0.64"
+thiserror = "2.0.3"
 anyhow = "1.0.89"
 # Other basic stuff
 regex = "1.11.0"
