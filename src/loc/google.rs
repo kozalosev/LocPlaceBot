@@ -115,7 +115,7 @@ impl GoogleLocFinder {
         let json = resp.json::<serde_json::Value>().await?;
         log::info!("response from Google Maps Geocoding API: {json}");
 
-        let results = json["results"].as_array().unwrap().iter()
+        let results = iter_over_array(&json["results"])
             .filter_map(map_resp_geo)
             .collect();
         Ok(results)
@@ -123,7 +123,6 @@ impl GoogleLocFinder {
 
     async fn find_text(&self, address: &str, params: SearchParams<'_>) -> LocResult {
         self.text_req_counter.inc();
-        // TODO: POST requests is not cached currently. This must be fixed before use in production!
         let resp = self.client.post("https://places.googleapis.com/v1/places:searchText")
             .header(http::header::CONTENT_TYPE.as_str(), mime::APPLICATION_JSON.as_ref())
             .header("X-Goog-Api-Key", &self.api_key)
@@ -135,7 +134,7 @@ impl GoogleLocFinder {
         let json = resp.json::<serde_json::Value>().await?;
         log::info!("response from Google Maps Text Search API: {json}");
 
-        let results: Vec<Location> = json["places"].as_array().unwrap().iter()
+        let results: Vec<Location> = iter_over_array(&json["places"])
             .filter_map(map_resp_place)
             .collect();
 
@@ -162,6 +161,17 @@ impl WithCachedResponseCounters for GoogleLocFinder {
     fn fetched_resp_counter(&self) -> &prometheus::Counter {
         &self.fetched_resp_counter
     }
+}
+
+type IterOverJsonArray<'a> = core::iter::FlatMap<
+    core::option::IntoIter<&'a Vec<serde_json::Value>>,
+    core::slice::Iter<'a, serde_json::Value>,
+    fn(&Vec<serde_json::value::Value>) -> core::slice::Iter<serde_json::Value>
+>;
+
+fn iter_over_array(v: &serde_json::Value) -> IterOverJsonArray {
+    v.as_array().into_iter()
+        .flat_map(|x| x.iter())
 }
 
 fn map_resp_geo(v: &serde_json::Value) -> Option<Location> {
