@@ -94,7 +94,7 @@ impl YandexLocFinder {
         self.inc_resp_counter(&resp);
 
         let json = resp.json::<serde_json::Value>().await?;
-        log::info!("response from Yandex Maps Geocoder: {json}");
+        log::info!("Response from Yandex Maps Geocoder: {json}");
 
         let empty: Vec<serde_json::Value> = Vec::new();
         let result = json["response"]["GeoObjectCollection"]["featureMember"]
@@ -118,7 +118,7 @@ impl YandexLocFinder {
         self.inc_resp_counter(&resp);
 
         let json = resp.json::<serde_json::Value>().await?;
-        log::info!("response from Yandex Maps Places API: {json}");
+        log::info!("Response from Yandex Maps Places API: {json}");
 
         let empty: Vec<serde_json::Value> = Vec::new();
         let result = json["features"]

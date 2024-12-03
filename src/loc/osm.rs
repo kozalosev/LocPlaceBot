@@ -50,7 +50,7 @@ impl LocFinder for OpenStreetMapLocFinder {
         self.inc_resp_counter(&resp);
 
         let json = resp.json::<serde_json::Value>().await?;
-        log::info!("response from Open Street Map Nominatim API: {json}");
+        log::info!("Response from Open Street Map Nominatim API: {json}");
 
         let results = json.as_array().unwrap().iter()
             .filter_map(map_resp)

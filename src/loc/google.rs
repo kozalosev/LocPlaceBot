@@ -113,7 +113,7 @@ impl GoogleLocFinder {
         self.inc_resp_counter(&resp);
 
         let json = resp.json::<serde_json::Value>().await?;
-        log::info!("response from Google Maps Geocoding API: {json}");
+        log::info!("Response from Google Maps Geocoding API: {json}");
 
         let results = iter_over_array(&json["results"])
             .filter_map(map_resp_geo)
@@ -132,7 +132,7 @@ impl GoogleLocFinder {
         self.inc_resp_counter(&resp);
 
         let json = resp.json::<serde_json::Value>().await?;
-        log::info!("response from Google Maps Text Search API: {json}");
+        log::info!("Response from Google Maps Text Search API: {json}");
 
         let results: Vec<Location> = iter_over_array(&json["places"])
             .filter_map(map_resp_place)

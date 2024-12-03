@@ -94,6 +94,19 @@ pub async fn inline_handler(bot: Bot, q: InlineQuery, usr_client: UserService<Us
     senders::send_locations_inline(bot, q.id, lang_code, locations).await
 }
 
+fn is_query_correct(query: &str) -> bool {
+    let allowed = query.is_empty().not() && (
+        QUERY_REGEX.is_match(query)   ||
+            COORDS_REGEXP.is_match(query) ||
+            *QUERY_CHECK_MODE != QueryCheckMode::Regex
+    );
+    if !allowed {
+        log::info!("Invalid query: {}", query);
+        metrics::INLINE_COUNTER.inc_bad_query();
+    }
+    allowed
+}
+
 async fn rate_limit_exceeded(q: &InlineQuery) -> bool {
     let forbidden = !INLINE_REQUESTS_LIMITER.is_req_allowed(q).await;
     if forbidden {
@@ -106,14 +119,6 @@ async fn rate_limit_exceeded(q: &InlineQuery) -> bool {
 pub async fn inline_chosen_handler(_: Bot, _: ChosenInlineResult) -> HandlerResult {
     metrics::INLINE_CHOSEN_COUNTER.inc();
     Ok(())
-}
-
-fn is_query_correct(query: &str) -> bool {
-    query.is_empty().not() && (
-        QUERY_REGEX.is_match(query)   ||
-        COORDS_REGEXP.is_match(query) ||
-        *QUERY_CHECK_MODE != QueryCheckMode::Regex
-    )
 }
 
 #[derive(From)]
