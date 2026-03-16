@@ -95,7 +95,7 @@ impl CacheManager for RedisCacheManager {
         self.pool
             .get().await
             .inspect_err(log_failed_connection_error)?
-            .set(cache_key, data).await
+            .set::<_, _, ()>(cache_key, data).await
             .inspect_err(|err| log::error!("Couldn't push a record into Redis: {err}"))?;
         Ok(res)
     }

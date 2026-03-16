@@ -169,7 +169,7 @@ type IterOverJsonArray<'a> = core::iter::FlatMap<
     fn(&Vec<serde_json::value::Value>) -> core::slice::Iter<serde_json::Value>
 >;
 
-fn iter_over_array(v: &serde_json::Value) -> IterOverJsonArray {
+fn iter_over_array(v: &'_ serde_json::Value) -> IterOverJsonArray<'_> {
     v.as_array().into_iter()
         .flat_map(|x| x.iter())
 }
