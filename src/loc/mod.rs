@@ -18,9 +18,9 @@ const DISABLE_ENV_PREFIX: &str = "DISABLE_FINDER_";
 static SEARCH_RADIUS: Lazy<f64> = Lazy::new(|| {
     let val: u32 = std::env::var("SEARCH_RADIUS_METERS")
         .ok()
-        .and_then(|v| v.parse().map_err(|e| log::error!("couldn't parse SEARCH_RADIUS_METERS: {e}")).ok())
+        .and_then(|v| v.parse().map_err(|e| tracing::error!("couldn't parse SEARCH_RADIUS_METERS: {e}")).ok())
         .unwrap_or(1000);
-    log::info!("SEARCH_RADIUS_METERS is {val}");
+    tracing::info!("SEARCH_RADIUS_METERS is {val}");
     f64::from(val) / 10_000.0   // 6 digits after a comma have accuracy in 0.1 m, so we need to shift the dot at 5 digits
 });
 
@@ -84,6 +84,7 @@ impl SearchChain {
         self
     }
 
+    #[tracing::instrument(skip(self), fields(query, lang_code))]
     pub async fn find(&self, query: &str, lang_code: &str, location: Option<(f64, f64)>) -> Vec<Location> {
         let futures = self.regional_finders.get(lang_code)
             .unwrap_or(&self.global_finders)
@@ -94,7 +95,7 @@ impl SearchChain {
             match fut.await {
                 Ok(res) if !res.is_empty() => return res,
                 Ok(_) => continue,
-                Err(err) => log::error!("couldn't fetch loc data: {err}"),
+                Err(err) => tracing::error!("couldn't fetch loc data: {err}"),
             }
         };
 
@@ -125,7 +126,7 @@ impl LocFinderChainWrapper {
             .map(|v| v == "true" || v == "1" || v == "yes" || v == "y")
             .unwrap_or(false);
         if disabled {
-            log::warn!("The {} finder is disabled!", self.env_suffix);
+            tracing::warn!("The {} finder is disabled!", self.env_suffix);
             None
         } else {
             Some(self.finder)
@@ -133,7 +134,7 @@ impl LocFinderChainWrapper {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 struct SearchParams<'a> {
     lang_code: &'a str,
     location: Option<(f64, f64)>

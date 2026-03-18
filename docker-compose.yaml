@@ -26,6 +26,7 @@ services:
       - CACHE_CLEAN_UP_INTERVAL_SECS
       - SEARCH_RADIUS_METERS
       - QUERY_CHECK_MODE
+      - OTEL_EXPORTER_OTLP_ENDPOINT
     expose:
       - 8080
     networks:
