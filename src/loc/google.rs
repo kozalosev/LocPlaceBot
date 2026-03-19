@@ -107,8 +107,9 @@ impl GoogleLocFinder {
             .map(|loc| get_bounds(loc, *SEARCH_RADIUS))
             .map(|(p1, p2)| format!("&bounds={},{}%7C{},{}", p1.0, p1.1, p2.0, p2.1))
             .unwrap_or_default();
+        let encoded_address = urlencoding::encode(address);
         let url = format!("https://maps.googleapis.com/maps/api/geocode/json?key={}&address={}&language={}&region={}{bounds_part}",
-                          self.api_key, address, params.lang_code, params.lang_code);
+                          self.api_key, encoded_address, params.lang_code, params.lang_code);
         let resp = self.client.get(url).send().await?;
         self.inc_resp_counter(&resp);
 
