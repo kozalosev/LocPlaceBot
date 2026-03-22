@@ -12,17 +12,17 @@ jobs:
       - run: echo "🔎 The name of your branch is ${{github.repository }}."
 
       - name: Check out repository code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
         with:
           submodules: recursive
       - run: echo "💡 The ${{ github.repository }} repository has been cloned to the runner."
 
       - name: Set up Rust
-        uses: hecrj/setup-rust-action@v1
+        uses: hecrj/setup-rust-action@v2
       - run: echo "🖥️ The workflow is now ready to test your code on the runner."
 
       - name: Install Protoc
-        uses: arduino/setup-protoc@v2
+        uses: arduino/setup-protoc@v3
 
       - name: Build
         run: cargo build --verbose
@@ -40,7 +40,7 @@ jobs:
       - run: echo "🔎 The name of your branch is ${{github.repository }}."
 
       - name: Check out repository code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
         with:
           submodules: recursive
       - run: echo "💡 The ${{ github.repository }} repository has been cloned to the runner."
