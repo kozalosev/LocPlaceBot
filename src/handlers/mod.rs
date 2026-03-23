@@ -179,7 +179,7 @@ pub async fn callback_handler(bot: Bot, q: CallbackQuery) -> HandlerResult {
         q.from.id,
         q.data.clone().unwrap_or("<null>".to_string()));
 
-    let mut answer = bot.answer_callback_query(q.clone().id);
+    let mut answer = bot.answer_callback_query(q.id.clone());
     if let (Some(chat_id), Some(data)) = (q.chat_id(), q.data) {
         let parts: Vec<&str> = data.split(',').collect();
         if parts.len() != 2 {
@@ -218,6 +218,9 @@ async fn resolve_locations(query: String, lang_code: &str, location: Option<(f64
     let locations = if let Some(coords) = COORDS_REGEXP.captures(query) {
         let lat: f64 = coords["latitude"].parse()?;
         let long: f64 = coords["longitude"].parse()?;
+        if !(-90.0..=90.0).contains(&lat) || !(-180.0..=180.0).contains(&long) {
+            return Err("coordinates out of range".into());
+        }
         vec![Location::new(lat, long)]
     } else {
         FINDER.find(query, lang_code, location).await

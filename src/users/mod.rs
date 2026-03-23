@@ -4,7 +4,6 @@ pub mod mock;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::sync::Arc;
 use anyhow::anyhow;
-use async_trait::async_trait;
 use chashmap::CHashMap;
 use derive_more::{Constructor, Display, From};
 use once_cell::sync::Lazy;
@@ -107,7 +106,6 @@ impl RequestError {
     }
 }
 
-#[async_trait]
 pub trait UserServiceClient : Clone {
     async fn get(&self, uid: UserId) -> Result<Option<User>, tonic::Status>;
     async fn register(&self, uid: UserId, name: String, consent: Consent) -> Result<i64, RequestError>;
@@ -176,7 +174,6 @@ impl UserServiceClientGrpc {
     }
 }
 
-#[async_trait]
 impl UserServiceClient for UserServiceClientGrpc {
     async fn get(&self, uid: UserId) -> Result<Option<User>, tonic::Status> {
         let cached_user = self.cache
