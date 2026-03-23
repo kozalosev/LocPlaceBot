@@ -14,7 +14,7 @@ const PLACES_ENV_API_KEY: &str   = "YANDEX_MAPS_PLACES_API_KEY";
 
 pub static YAPI_MODE: Lazy<YandexAPIMode> = Lazy::new(|| {
     let val = std::env::var("YAPI_MODE").expect("YAPI_MODE must be set!");
-    log::info!("YAPI_MODE is {val}");
+    tracing::info!("YAPI_MODE is {val}");
     YandexAPIMode::from_str(val.as_str()).expect("Invalid value of YAPI_MODE")
 });
 
@@ -77,6 +77,7 @@ impl YandexLocFinder {
         Self::init(geocode_api_key, places_api_key)
     }
 
+    #[tracing::instrument(skip(self))]
     async fn find_geo_place(&self, address: &str, params: SearchParams<'_>) -> LocResult {
         let mut results = self.find_geo(address, params).await?;
         if results.is_empty() {
@@ -85,16 +86,18 @@ impl YandexLocFinder {
         Ok(results)
     }
 
+    #[tracing::instrument(skip(self))]
     async fn find_geo(&self, address: &str, params: SearchParams<'_>) -> LocResult {
         self.geocode_req_counter.inc();
 
+        let encoded_address = urlencoding::encode(address);
         let url = format!("https://geocode-maps.yandex.ru/1.x?apikey={}&lang={}&geocode={}&format=json{}",
-                          self.geocode_api_key, params.lang_code, address, build_bbox_part(params.location));
+                          self.geocode_api_key, params.lang_code, encoded_address, build_bbox_part(params.location));
         let resp = self.client.get(url).send().await?;
         self.inc_resp_counter(&resp);
 
         let json = resp.json::<serde_json::Value>().await?;
-        log::info!("Response from Yandex Maps Geocoder: {json}");
+        tracing::info!("Response from Yandex Maps Geocoder: {json}");
 
         let empty: Vec<serde_json::Value> = Vec::new();
         let result = json["response"]["GeoObjectCollection"]["featureMember"]
@@ -106,19 +109,21 @@ impl YandexLocFinder {
         Ok(result)
     }
 
+    #[tracing::instrument(skip(self))]
     async fn find_place(&self, address: &str, params: SearchParams<'_>) -> LocResult {
         self.place_req_counter.inc();
 
         let api_key = self.places_api_key.clone()
             .ok_or(anyhow!("unexpected absence of a key for Yandex Maps Places API"))?;
 
+        let encoded_address = urlencoding::encode(address);
         let url = format!("https://search-maps.yandex.ru/v1/?apikey={}&lang={}&text={}{}",
-                          api_key, params.lang_code, address, build_bbox_part(params.location));
+                          api_key, params.lang_code, encoded_address, build_bbox_part(params.location));
         let resp = self.client.get(url).send().await?;
         self.inc_resp_counter(&resp);
 
         let json = resp.json::<serde_json::Value>().await?;
-        log::info!("Response from Yandex Maps Places API: {json}");
+        tracing::info!("Response from Yandex Maps Places API: {json}");
 
         let empty: Vec<serde_json::Value> = Vec::new();
         let result = json["features"]
@@ -133,6 +138,7 @@ impl YandexLocFinder {
 
 #[async_trait]
 impl LocFinder for YandexLocFinder {
+    #[tracing::instrument(skip(self))]
     async fn find(&self, query: &str, lang_code: &str, location: Option<(f64, f64)>) -> LocResult {
         let params = SearchParams { lang_code, location };
         match *YAPI_MODE {
@@ -162,7 +168,7 @@ fn geocode_elem_mapper(v: &serde_json::Value) -> Option<Location> {
         .split(' ')
         .collect::<Vec<&str>>();
     if pos.len() < 2 {
-        log::error!("pos length < 2: {pos:?}");
+        tracing::error!("pos length < 2: {pos:?}");
         return None
     }
     let longitude: f64 = pos[0].parse().ok()?;

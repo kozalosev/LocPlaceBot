@@ -14,7 +14,7 @@ const FINDER_ENV_API_KEY: &str = "GOOGLE_MAPS_API_KEY";
 
 static GAPI_MODE: Lazy<GoogleAPIMode> = Lazy::new(|| {
     let val = std::env::var("GAPI_MODE").expect("GAPI_MODE must be set!");
-    log::info!("GAPI_MODE is {val}");
+    tracing::info!("GAPI_MODE is {val}");
     GoogleAPIMode::from_str(val.as_str()).expect("Invalid value of GAPI_MODE")
 });
 
@@ -93,6 +93,7 @@ impl GoogleLocFinder {
         Self::init(api_key.as_str())
     }
 
+    #[tracing::instrument(skip(self))]
     async fn find(&self, address: &str, params: SearchParams<'_>) -> LocResult {
         let mut results = self.find_geo(address, params).await?;
         if results.is_empty() {
@@ -101,19 +102,21 @@ impl GoogleLocFinder {
         Ok(results)
     }
 
+    #[tracing::instrument(skip(self))]
     async fn find_geo(&self, address: &str, params: SearchParams<'_>) -> LocResult {
         self.geocode_req_counter.inc();
         let bounds_part = params.location
             .map(|loc| get_bounds(loc, *SEARCH_RADIUS))
             .map(|(p1, p2)| format!("&bounds={},{}%7C{},{}", p1.0, p1.1, p2.0, p2.1))
             .unwrap_or_default();
+        let encoded_address = urlencoding::encode(address);
         let url = format!("https://maps.googleapis.com/maps/api/geocode/json?key={}&address={}&language={}&region={}{bounds_part}",
-                          self.api_key, address, params.lang_code, params.lang_code);
+                          self.api_key, encoded_address, params.lang_code, params.lang_code);
         let resp = self.client.get(url).send().await?;
         self.inc_resp_counter(&resp);
 
         let json = resp.json::<serde_json::Value>().await?;
-        log::info!("Response from Google Maps Geocoding API: {json}");
+        tracing::info!("Response from Google Maps Geocoding API: {json}");
 
         let results = iter_over_array(&json["results"])
             .filter_map(map_resp_geo)
@@ -121,6 +124,7 @@ impl GoogleLocFinder {
         Ok(results)
     }
 
+    #[tracing::instrument(skip(self))]
     async fn find_text(&self, address: &str, params: SearchParams<'_>) -> LocResult {
         self.text_req_counter.inc();
         let resp = self.client.post("https://places.googleapis.com/v1/places:searchText")
@@ -132,7 +136,7 @@ impl GoogleLocFinder {
         self.inc_resp_counter(&resp);
 
         let json = resp.json::<serde_json::Value>().await?;
-        log::info!("Response from Google Maps Text Search API: {json}");
+        tracing::info!("Response from Google Maps Text Search API: {json}");
 
         let results: Vec<Location> = iter_over_array(&json["places"])
             .filter_map(map_resp_place)
@@ -144,6 +148,7 @@ impl GoogleLocFinder {
 
 #[async_trait]
 impl LocFinder for GoogleLocFinder {
+    #[tracing::instrument(skip(self))]
     async fn find(&self, query: &str, lang_code: &str, location: Option<(f64, f64)>) -> LocResult {
         let params = SearchParams { lang_code, location };
         match *GAPI_MODE {
@@ -169,7 +174,7 @@ type IterOverJsonArray<'a> = core::iter::FlatMap<
     fn(&Vec<serde_json::value::Value>) -> core::slice::Iter<serde_json::Value>
 >;
 
-fn iter_over_array(v: &serde_json::Value) -> IterOverJsonArray {
+fn iter_over_array(v: &'_ serde_json::Value) -> IterOverJsonArray<'_> {
     v.as_array().into_iter()
         .flat_map(|x| x.iter())
 }

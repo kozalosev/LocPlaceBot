@@ -10,7 +10,7 @@ const REDIS_KEY_PREFIX: &str = "rate-limiter.";
 pub struct RequestsLimiter {
     pool: mobc::Pool<RedisConnectionManager>,
     max_allowed: i32,
-    timeframe: usize,
+    timeframe: i64,
 }
 
 impl RequestsLimiter {
@@ -46,15 +46,15 @@ impl RequestsLimiter {
             .get().await?
             .into_inner();
 
-        let redis::Value::Bulk(new_val) = redis::pipe().atomic()
+        let redis::Value::Array(new_val) = redis::pipe().atomic()
             .incr(key.clone(), 1)
             .expire(key, self.timeframe).ignore()
             .query_async(&mut conn).await?
             else {
-                return Err(anyhow!("unexpected non-bulk type of new_val"))
+                return Err(anyhow!("unexpected non-array type of new_val"))
             };
         let redis::Value::Int(new_val) = new_val.first()
-            .ok_or(anyhow!("unexpected empty vector in a bulk"))?
+            .ok_or(anyhow!("unexpected empty array in result"))?
             else {
                 return Err(anyhow!("unexpected non-int type of new_val"))
             };

@@ -78,13 +78,14 @@ pub fn preload_env_vars() {
     let _ = *INLINE_REQUESTS_LIMITER;
 }
 
+#[tracing::instrument(skip(bot, usr_client), fields(query = %q.query))]
 pub async fn inline_handler(bot: Bot, q: InlineQuery, usr_client: UserService<UserServiceClientGrpc>) -> HandlerResult {
     if !is_query_correct(&q.query) || rate_limit_exceeded(&q).await {
         bot.answer_inline_query(q.id, vec![]).await?;
         return Ok(());
     }
 
-    log::info!("Got an inline query: {}", q.query);
+    tracing::info!("Got an inline query: {}", q.query);
     metrics::INLINE_COUNTER.inc_allowed();
 
     let lang_code = &ensure_lang_code(q.from.id, q.from.language_code.clone(), &usr_client).await;
@@ -101,7 +102,7 @@ fn is_query_correct(query: &str) -> bool {
             *QUERY_CHECK_MODE != QueryCheckMode::Regex
     );
     if !allowed {
-        log::info!("Invalid query: {}", query);
+        tracing::info!("Invalid query: {}", query);
         metrics::INLINE_COUNTER.inc_bad_query();
     }
     allowed
@@ -110,7 +111,7 @@ fn is_query_correct(query: &str) -> bool {
 async fn rate_limit_exceeded(q: &InlineQuery) -> bool {
     let forbidden = !INLINE_REQUESTS_LIMITER.is_req_allowed(q).await;
     if forbidden {
-        log::info!("Requests limit was exceeded for {}", q.from.id);
+        tracing::info!("Requests limit was exceeded for {}", q.from.id);
         metrics::INLINE_COUNTER.inc_forbidden();
     }
     forbidden
@@ -134,7 +135,7 @@ pub async fn command_handler(bot: Bot, msg: Message, cmd: Command, me: Me, usr_c
             help::get_start_message(msg.from.as_ref().unwrap(), me, usr_client).await.into()
         },
         Command::Start => {
-            log::warn!("The /start command was invoked without a FROM field for a message: {msg:?}");
+            tracing::warn!("The /start command was invoked without a FROM field for a message: {msg:?}");
             let lang_code = &determine_lang_code(&msg, &usr_client).await?;
             help::get_help_message(me, lang_code).into()
         }
@@ -155,7 +156,7 @@ pub async fn command_handler(bot: Bot, msg: Message, cmd: Command, me: Me, usr_c
         }
         _ if usr_client.disabled() => {
             let lang_code = &determine_lang_code(&msg, &usr_client).await?;
-            log::error!("user-service is disabled but a command was invoked by {:?}", msg.from);
+            tracing::error!("user-service is disabled but a command was invoked by {:?}", msg.from);
             t!("error.service.user.disabled", locale = lang_code).to_string().into()
         },
         _ if msg.from.is_none() => Err(anyhow!("some command was invoked without a FROM field for a message: {msg:?}"))?,
@@ -175,11 +176,11 @@ pub async fn message_handler(bot: Bot, msg: Message, usr_client: UserService<Use
 }
 
 pub async fn callback_handler(bot: Bot, q: CallbackQuery) -> HandlerResult {
-    log::info!("Got a callback query for {}: {}",
+    tracing::info!("Got a callback query for {}: {}",
         q.from.id,
         q.data.clone().unwrap_or("<null>".to_string()));
 
-    let mut answer = bot.answer_callback_query(q.clone().id);
+    let mut answer = bot.answer_callback_query(q.id.clone());
     if let (Some(chat_id), Some(data)) = (q.chat_id(), q.data) {
         let parts: Vec<&str> = data.split(',').collect();
         if parts.len() != 2 {
@@ -197,6 +198,7 @@ pub async fn callback_handler(bot: Bot, q: CallbackQuery) -> HandlerResult {
     Ok(())
 }
 
+#[tracing::instrument(skip(bot, usr_client))]
 async fn cmd_loc_handler(bot: Bot, msg: Message, usr_client: UserService<impl UserServiceClient>) -> HandlerResult {
     let from = msg.from.as_ref().ok_or("no from")?;
     let lang_code = &ensure_lang_code(from.id, from.language_code.clone(), &usr_client).await;
@@ -205,7 +207,7 @@ async fn cmd_loc_handler(bot: Bot, msg: Message, usr_client: UserService<impl Us
         None => return send_error(bot, msg, "error.query.empty", lang_code).await,
         Some(text) => text.to_string()
     };
-    log::info!("Got a message query: {}", text);
+    tracing::info!("Got a message query: {}", text);
 
     let location = try_determine_location(from.id, &usr_client).await;
     let locations = resolve_locations(text, lang_code, location).await?;
@@ -213,11 +215,15 @@ async fn cmd_loc_handler(bot: Bot, msg: Message, usr_client: UserService<impl Us
     Ok(())
 }
 
+#[tracing::instrument]
 async fn resolve_locations(query: String, lang_code: &str, location: Option<(f64, f64)>) -> Result<Vec<Location>, Box<dyn std::error::Error + Send + Sync>> {
     let query = query.as_str();
     let locations = if let Some(coords) = COORDS_REGEXP.captures(query) {
         let lat: f64 = coords["latitude"].parse()?;
         let long: f64 = coords["longitude"].parse()?;
+        if !(-90.0..=90.0).contains(&lat) || !(-180.0..=180.0).contains(&long) {
+            return Err("coordinates out of range".into());
+        }
         vec![Location::new(lat, long)]
     } else {
         FINDER.find(query, lang_code, location).await

@@ -2,7 +2,7 @@ use once_cell::sync::Lazy;
 use rust_i18n::t;
 use teloxide::prelude::*;
 use teloxide::RequestError;
-use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, InlineQueryResult, InlineQueryResultLocation};
+use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, InlineQueryId, InlineQueryResult, InlineQueryResultLocation};
 use teloxide::types::ReplyMarkup::InlineKeyboard;
 use super::HandlerResult;
 use crate::loc::Location;
@@ -17,7 +17,7 @@ static MSG_LOC_LIMIT: Lazy<usize> = Lazy::new(|| std::env::var("MSG_LOC_LIMIT")
     .unwrap_or(10)
 );
 
-pub async fn send_locations_inline(bot: Bot, query_id: String, lang_code: &str, locations: Vec<Location>) -> HandlerResult {
+pub async fn send_locations_inline(bot: Bot, query_id: InlineQueryId, lang_code: &str, locations: Vec<Location>) -> HandlerResult {
     let results: Vec<InlineQueryResult> = locations.iter()
         .map(|l| {
             let uuid = uuid::Uuid::new_v4().to_string();

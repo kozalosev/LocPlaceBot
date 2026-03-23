@@ -2,7 +2,9 @@ use std::str::FromStr;
 use derive_more::{Constructor, Display};
 use rust_i18n::t;
 use teloxide::Bot;
-use teloxide::dispatching::dialogue::InMemStorage;
+use serde::{Deserialize, Serialize};
+use teloxide::dispatching::dialogue::RedisStorage;
+use teloxide::dispatching::dialogue::serializer::Json;
 use teloxide::payloads::{AnswerCallbackQuery, AnswerCallbackQuerySetters, SendMessageSetters};
 use teloxide::prelude::{CallbackQuery, Dialogue, Requester, UserId};
 use teloxide::requests::JsonRequest;
@@ -98,9 +100,9 @@ pub fn cancellation_filter<CD: FromStr>(query: CallbackQuery) -> bool {
         .is_some()
 }
 
-pub async fn cancellation_handler<S, CD>(bot: Bot, dialogue: Dialogue<S, InMemStorage<S>>, query: CallbackQuery, usr_client: UserService<UserServiceClientGrpc>) -> HandlerResult
+pub async fn cancellation_handler<S, CD>(bot: Bot, dialogue: Dialogue<S, RedisStorage<Json>>, query: CallbackQuery, usr_client: UserService<UserServiceClientGrpc>) -> HandlerResult
 where
-    S: Clone + Send + 'static,
+    S: Clone + Send + Serialize + for<'de> Deserialize<'de> + 'static,
     CD: UserIdAware + FromStr
 {
     let data = query.data.as_ref()

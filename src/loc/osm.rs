@@ -35,14 +35,16 @@ impl OpenStreetMapLocFinder {
 
 #[async_trait]
 impl LocFinder for OpenStreetMapLocFinder {
+    #[tracing::instrument(skip(self))]
     async fn find(&self, query: &str, lang_code: &str, location: Option<(f64, f64)>) -> LocResult {
         self.api_req_counter.inc();
         let viewbox_part = location
             .map(|loc| get_bounds(loc, *SEARCH_RADIUS))
             .map(|(p1, p2)| format!("&viewbox={},{},{},{}", p1.1, p1.0, p2.1, p2.0))
             .unwrap_or_default();
+        let query = urlencoding::encode(query);
         let url = format!("https://nominatim.openstreetmap.org/search?q={query}&format=json{viewbox_part}");
-        log::debug!("Request: {url}");
+        tracing::debug!("Request: {url}");
         let resp = self.client.get(url)
             .header(USER_AGENT, "kozalosev/LocPlaceBot")
             .header(ACCEPT_LANGUAGE, lang_code)
@@ -50,9 +52,10 @@ impl LocFinder for OpenStreetMapLocFinder {
         self.inc_resp_counter(&resp);
 
         let json = resp.json::<serde_json::Value>().await?;
-        log::info!("Response from Open Street Map Nominatim API: {json}");
+        tracing::info!("Response from Open Street Map Nominatim API: {json}");
 
-        let results = json.as_array().unwrap().iter()
+        let empty = Vec::new();
+        let results = json.as_array().unwrap_or(&empty).iter()
             .filter_map(map_resp)
             .collect();
         Ok(results)
