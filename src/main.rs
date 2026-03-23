@@ -1,5 +1,4 @@
 use teloxide::update_listeners::UpdateListener;
-extern crate core;
 
 mod loc;
 mod metrics;
@@ -57,7 +56,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .branch(Update::filter_message().filter_command::<handlers::Command>().endpoint(handlers::command_handler))
         .branch(Update::filter_message().endpoint(handlers::message_handler))
         .branch(Update::filter_callback_query().filter(handlers::options::consent::callback_filter).endpoint(handlers::options::consent::callback_handler))
-        .branch(Update::filter_callback_query().filter(handlers::options::cancellation_filter::<CancellationCallbackData>).endpoint(handlers::options::cancellation_handler::<LocationState, CancellationCallbackData>))
+        .branch(Update::filter_callback_query().filter(handlers::options::cancellation_filter::<CancellationCallbackData>)
+            .enter_dialogue::<CallbackQuery, CommandCacheStorage, LocationState>()
+            .endpoint(handlers::options::cancellation_handler::<LocationState, CancellationCallbackData>))
         .branch(Update::filter_callback_query().endpoint(handlers::callback_handler));
 
     let bot = Bot::from_env();

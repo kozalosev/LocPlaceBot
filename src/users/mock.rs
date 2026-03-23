@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use async_trait::async_trait;
 use chashmap::CHashMap;
 use teloxide::prelude::UserId;
 use tonic::Status;
@@ -30,7 +29,6 @@ impl UserServiceClientMock {
     }
 }
 
-#[async_trait]
 impl UserServiceClient for UserServiceClientMock {
     async fn get(&self, uid: UserId) -> Result<Option<User>, Status> {
         Ok(self.users.get(&uid).map(|u| u.clone()))

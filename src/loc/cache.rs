@@ -1,5 +1,6 @@
 use std::error::Error;
 use std::sync::Arc;
+use std::time::Duration;
 use async_trait::async_trait;
 use derive_more::Constructor;
 use http::Extensions;
@@ -13,16 +14,29 @@ use reqwest::header::HeaderValue;
 use reqwest::{Body, Request, Response};
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware, Middleware, Next};
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 use serde::de::DeserializeOwned;
 
 const X_BODY_HASH: &str = "X-Body-Hash";
+
+const ENV_CACHE_MAX_TTL_SECS: &str = "CACHE_MAX_TTL_SECS";
+const ENV_HTTP_CONNECT_TIMEOUT_SECS: &str = "HTTP_CONNECT_TIMEOUT_SECS";
+const ENV_HTTP_REQUEST_TIMEOUT_SECS: &str = "HTTP_REQUEST_TIMEOUT_SECS";
+
+const DEFAULT_CACHE_MAX_TTL_SECS: u64 = 86400; // 24 hours
+const DEFAULT_HTTP_CONNECT_TIMEOUT_SECS: u64 = 5;
+const DEFAULT_HTTP_REQUEST_TIMEOUT_SECS: u64 = 30;
 
 pub fn caching_client(redis_pool: &Pool<RedisConnectionManager>) -> ClientWithMiddleware {
     caching_client_builder(redis_pool).build()
 }
 
 pub fn caching_client_builder(redis_pool: &Pool<RedisConnectionManager>) -> ClientBuilder {
+    let connect_timeout = get_env_or_default(ENV_HTTP_CONNECT_TIMEOUT_SECS, DEFAULT_HTTP_CONNECT_TIMEOUT_SECS);
+    let request_timeout = get_env_or_default(ENV_HTTP_REQUEST_TIMEOUT_SECS, DEFAULT_HTTP_REQUEST_TIMEOUT_SECS);
     let client = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(connect_timeout))
+        .timeout(Duration::from_secs(request_timeout))
         .build().expect("couldn't create an HTTP client");
     ClientBuilder::new(client)
         .with(InsertBodyHashIntoHeadersMiddleware)
@@ -92,10 +106,11 @@ impl CacheManager for RedisCacheManager {
         let store = Store { response: res.clone(), policy };
         let data = serialize(&store)
             .inspect_err(|err| log::error!("Couldn't serialize the response: {err}"))?;
+        let max_ttl: u64 = get_env_or_default(ENV_CACHE_MAX_TTL_SECS, DEFAULT_CACHE_MAX_TTL_SECS);
         self.pool
             .get().await
             .inspect_err(log_failed_connection_error)?
-            .set::<_, _, ()>(cache_key, data).await
+            .set_ex::<_, _, ()>(cache_key, data, max_ttl).await
             .inspect_err(|err| log::error!("Couldn't push a record into Redis: {err}"))?;
         Ok(res)
     }
@@ -141,11 +156,17 @@ fn log_failed_connection_error(err: &impl Error) {
     log::error!("Couldn't get a Redis connection: {err}")
 }
 
-fn serialize(value: impl Serialize) -> Result<Vec<u8>, bincode::error::EncodeError> {
-    bincode::serde::encode_to_vec(value, bincode::config::standard())
+fn serialize(value: impl Serialize) -> Result<Vec<u8>, postcard::Error> {
+    postcard::to_stdvec(&value)
 }
 
-fn deserialize<T: DeserializeOwned>(bytes: Vec<u8>) -> Result<T, bincode::error::DecodeError> {
-    bincode::serde::decode_from_slice(bytes.as_slice(), bincode::config::standard())
-        .map(|(t, _)| t)
+fn deserialize<T: DeserializeOwned>(bytes: Vec<u8>) -> Result<T, postcard::Error> {
+    postcard::from_bytes(bytes.as_slice())
+}
+
+fn get_env_or_default<T: FromStr>(name: &str, default: T) -> T {
+    std::env::var(name)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
 }
