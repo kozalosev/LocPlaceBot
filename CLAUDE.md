@@ -39,7 +39,7 @@ Any finder can be disabled via `DISABLE_FINDER_{GOOGLE,OSM,YANDEX}=true`. For Ru
 
 ### HTTP cache (`src/loc/cache.rs`)
 
-`RedisCacheManager` implements `http_cache::CacheManager`. Cache key: `loc-cache:{method}:{uri}:{body_sha256}`. Values are bincode-serialized `(HttpResponse, CachePolicy)` stored in Redis with TTL (`CACHE_MAX_TTL_SECS`, default 86400 s). An axum middleware (`InsertBodyHashIntoHeadersMiddleware`) computes the body hash before the cache layer sees the request.
+`RedisCacheManager` implements `http_cache::CacheManager`. Cache key: `loc-cache:{method}:{uri}:{body_sha256}`. Values are postcard-serialized `(HttpResponse, CachePolicy)` stored in Redis with TTL (`CACHE_MAX_TTL_SECS`, default 86400 s). An axum middleware (`InsertBodyHashIntoHeadersMiddleware`) computes the body hash before the cache layer sees the request.
 
 ### Rate limiter (`src/handlers/limiter.rs`)
 

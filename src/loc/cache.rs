@@ -156,13 +156,12 @@ fn log_failed_connection_error(err: &impl Error) {
     log::error!("Couldn't get a Redis connection: {err}")
 }
 
-fn serialize(value: impl Serialize) -> Result<Vec<u8>, bincode::error::EncodeError> {
-    bincode::serde::encode_to_vec(value, bincode::config::standard())
+fn serialize(value: impl Serialize) -> Result<Vec<u8>, postcard::Error> {
+    postcard::to_stdvec(&value)
 }
 
-fn deserialize<T: DeserializeOwned>(bytes: Vec<u8>) -> Result<T, bincode::error::DecodeError> {
-    bincode::serde::decode_from_slice(bytes.as_slice(), bincode::config::standard())
-        .map(|(t, _)| t)
+fn deserialize<T: DeserializeOwned>(bytes: Vec<u8>) -> Result<T, postcard::Error> {
+    postcard::from_bytes(bytes.as_slice())
 }
 
 fn get_env_or_default<T: FromStr>(name: &str, default: T) -> T {
