@@ -4,7 +4,7 @@ use crate::testutils::start_redis;
 
 #[tokio::test]
 async fn test_rate_limiter() {
-    pretty_env_logger::init();
+    let _ = tracing_subscriber::fmt::try_init();
     
     let (_redis_container, redis_client) = start_redis().await;
     let limiter = RequestsLimiter::new(redis_client, 2, 60);

@@ -9,6 +9,7 @@ mod users;
 mod eula;
 mod commands;
 mod redis;
+mod observability;
 
 #[cfg(test)]
 mod testutils;
@@ -16,6 +17,7 @@ mod testutils;
 use std::env::VarError;
 use std::net::SocketAddr;
 use std::time::Duration;
+use axum_tracing_opentelemetry::middleware::{OtelAxumLayer, OtelInResponseLayer};
 use futures::future::join_all;
 use reqwest::Url;
 use rust_i18n::i18n;
@@ -40,8 +42,8 @@ i18n!(fallback = "en");    // load localizations with default parameters
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(debug_assertions)]
     dotenvy::dotenv()?;
-    
-    pretty_env_logger::init();
+
+    let tracer_provider = observability::init_tracing()?;
     handlers::preload_env_vars();
 
     let handler = dptree::entry()
@@ -72,7 +74,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if set_my_commands_failed {
         Err("couldn't set the bot's commands")?
     } else {
-        log::info!("The commands has been updated successfully!")
+        tracing::info!("The commands has been updated successfully!")
     }
 
     let webhook_url: Option<Url> = match std::env::var(ENV_WEBHOOK_URL) {
@@ -102,7 +104,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             UserService::Connected(grpc)
         },
         Err(e) => {
-            log::error!("couldn't connect to user-service: {e}");
+            tracing::error!("couldn't connect to user-service: {e}");
             UserService::Disabled
         }
     };
@@ -111,9 +113,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         RedisStorage::open(&REDIS.connection_url, Json).await?
     ];
 
-    match webhook_url {
+    let result = match webhook_url {
         Some(url) => {
-            log::info!("Setting a webhook: {url}");
+            tracing::info!("Setting a webhook: {url}");
 
             let (mut listener, stop_flag, bot_router) = axum_to_router(bot.clone(), Options::new(addr, url)).await?;
             let stop_token = listener.stop_token();
@@ -127,13 +129,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let srv = tokio::spawn(async move {
                 let tcp_listener = tokio::net::TcpListener::bind(addr)
                     .await
-                    .map_err(|err| {
-                        stop_token.stop();
-                        err
-                    })?;
+                    .inspect_err(|_| stop_token.stop())?;
                 let app = axum::Router::new()
                     .merge(metrics_router)
-                    .merge(bot_router);
+                    .merge(bot_router)
+                    .layer(OtelInResponseLayer)
+                    .layer(OtelAxumLayer::default());
                 axum::serve(tcp_listener, app)
                     .with_graceful_shutdown(stop_flag)
                     .await
@@ -144,7 +145,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             res?.map_err(Into::into)
         }
         None => {
-            log::info!("The polling dispatcher is activating...");
+            tracing::info!("The polling dispatcher is activating...");
 
             let bot_fut = tokio::spawn(async move {
                 Dispatcher::builder(bot, handler)
@@ -157,12 +158,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             let srv = tokio::spawn(async move {
                 let tcp_listener = tokio::net::TcpListener::bind(addr).await?;
-                axum::serve(tcp_listener, metrics_router)
+                let app = metrics_router
+                    .layer(OtelInResponseLayer)
+                    .layer(OtelAxumLayer::default());
+                axum::serve(tcp_listener, app)
                     .with_graceful_shutdown(async {
                         tokio::signal::ctrl_c()
                             .await
                             .expect("failed to install CTRL+C signal handler");
-                        log::info!("Shutdown of the metrics server")
+                        tracing::info!("Shutdown of the metrics server")
                     })
                     .await
             });
@@ -170,5 +174,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let (res, _) = futures::join!(srv, bot_fut);
             res?.map_err(Into::into)
         }
-    }
+    };
+
+    tracer_provider.shutdown()?;
+    result
 }
