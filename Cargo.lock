@@ -1800,7 +1800,6 @@ dependencies = [
  "tonic-prost",
  "tonic-prost-build",
  "tracing",
- "tracing-log",
  "tracing-opentelemetry",
  "tracing-subscriber",
  "urlencoding",

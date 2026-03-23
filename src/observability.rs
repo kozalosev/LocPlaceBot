@@ -10,15 +10,13 @@ const SERVICE_NAME: &str = env!("CARGO_PKG_NAME");
 /// Initialize tracing subscriber, optionally with OpenTelemetry OTLP export.
 ///
 /// Bridges existing `log::*` calls from libraries into the tracing pipeline
-/// via `tracing_log::LogTracer`.
+/// via `tracing_subscriber`'s built-in `tracing-log` feature (called inside `try_init`).
 ///
 /// Configuration via environment variables:
 /// - `OTEL_EXPORTER_OTLP_ENDPOINT`: OTLP endpoint. If unset, OTLP export is
 ///   disabled and only console output is produced (useful for local development).
 /// - `RUST_LOG`: console log level filter
 pub fn init_tracing() -> Result<SdkTracerProvider, Box<dyn std::error::Error>> {
-    tracing_log::LogTracer::init()?;
-
     let provider = build_provider()?;
     global::set_tracer_provider(provider.clone());
 
