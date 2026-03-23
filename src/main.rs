@@ -1,5 +1,4 @@
 use teloxide::update_listeners::UpdateListener;
-extern crate core;
 
 mod loc;
 mod metrics;
