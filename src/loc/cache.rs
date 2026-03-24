@@ -13,6 +13,7 @@ use mobc_redis::RedisConnectionManager;
 use reqwest::header::HeaderValue;
 use reqwest::{Body, Request, Response};
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware, Middleware, Next};
+use reqwest_tracing::TracingMiddleware;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use serde::de::DeserializeOwned;
@@ -39,6 +40,7 @@ pub fn caching_client_builder(redis_pool: &Pool<RedisConnectionManager>) -> Clie
         .timeout(Duration::from_secs(request_timeout))
         .build().expect("couldn't create an HTTP client");
     ClientBuilder::new(client)
+        .with(TracingMiddleware::default())
         .with(InsertBodyHashIntoHeadersMiddleware)
         .with(Cache(HttpCache {
             mode: CacheMode::IgnoreRules,

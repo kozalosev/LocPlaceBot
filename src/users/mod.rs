@@ -11,6 +11,8 @@ use serde_json::json;
 use teloxide::types::{MessageId, UserId};
 use tonic::{Code, Response};
 use tonic::transport::Channel;
+use tonic_tracing_opentelemetry::middleware::client::{OtelGrpcLayer, OtelGrpcService};
+use tower::Layer;
 use generated::user_service_client::UserServiceClient as GrpcClient;
 use generated::update_user_request::Target;
 use generated::*;
@@ -141,15 +143,18 @@ impl <T: UserServiceClient> UserService<T> {
 
 #[derive(Clone)]
 pub struct UserServiceClientGrpc {
-    inner: GrpcClient<Channel>,
+    inner: GrpcClient<OtelGrpcService<Channel>>,
     cache: Arc<CHashMap<UserId, CachedUser>>,
     service_descr: Service,
 }
 
 impl UserServiceClientGrpc {
-    pub async fn connect(addr: impl Into<SocketAddr>, hello: Hello) -> Result<Self, tonic::transport::Error> {
+    pub async fn connect(addr: impl Into<SocketAddr>, hello: Hello) -> anyhow::Result<Self> {
+        let channel = Channel::from_shared(format!("http://{}", addr.into()))?
+            .connect()
+            .await?;
         Ok(Self {
-            inner: GrpcClient::connect(format!("http://{}", addr.into())).await?,
+            inner: GrpcClient::new(OtelGrpcLayer.layer(channel)),
             cache: Arc::new(Default::default()),
             service_descr: hello.into(),
         })
@@ -181,8 +186,12 @@ impl UserServiceClient for UserServiceClientGrpc {
             .filter(|usr| is_user_fresh(usr))
             .map(|usr| usr.clone());
         let maybe_usr = match cached_user {
-            Some(cached) => cached.user,
+            Some(cached) => {
+                tracing::debug!(uid = %uid, "user fetched from cache");
+                cached.user
+            },
             None => {
+                tracing::debug!(uid = %uid, "fetching user from user-service");
                 let resp = self.inner.clone().get(GetUserRequest {
                     id: uid.0 as i64,
                     by_external_id: true,
@@ -235,6 +244,7 @@ impl UserServiceClient for UserServiceClientGrpc {
     }
 
     async fn set_language(&self, uid: UserId, code: &str) -> Result<(), tonic::Status> {
+        tracing::debug!(uid = %uid, language = %code, "updating user language in user-service");
         let id = self.get_internal_id(uid).await?;
         self.inner.clone().update(UpdateUserRequest {
             id,
@@ -245,6 +255,7 @@ impl UserServiceClient for UserServiceClientGrpc {
     }
 
     async fn set_location(&self, uid: UserId, latitude: f64, longitude: f64) -> Result<(), tonic::Status> {
+        tracing::debug!(uid = %uid, latitude, longitude, "updating user location in user-service");
         let id = self.get_internal_id(uid).await?;
         let location = Location { latitude, longitude };
         self.inner.clone().update(UpdateUserRequest {

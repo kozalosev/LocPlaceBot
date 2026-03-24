@@ -104,7 +104,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             UserService::Connected(grpc)
         },
         Err(e) => {
-            tracing::error!("couldn't connect to user-service: {e}");
+            tracing::error!("couldn't connect to user-service: {e:#}");
             UserService::Disabled
         }
     };

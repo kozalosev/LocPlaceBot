@@ -14,7 +14,6 @@ tokio = { version =  "1.50.0", default-features = false, features = ["rt-multi-t
 axum = "0.8.8"
 axum-prometheus = "0.10.0"
 prometheus = "0.14.0"
-hyper = "1.8.1"
 # Logging and envs
 log = "0.4.29"
 tracing = "0.1.44"
@@ -28,6 +27,7 @@ dotenvy = "0.15.7"
 # HTTP client with caching
 reqwest = { version = "0.13.2", default-features = false, features = ["rustls", "json"] }
 reqwest-middleware = { version = "0.5.1", features = ["json"] }
+reqwest-tracing = { version = "0.7.0", features = ["opentelemetry_0_31"] }
 http = "1.4.0"
 http-cache = { version = "1.0.0-alpha.5", default-features = false, features = ["url-standard"] }
 http-cache-reqwest = { version = "1.0.0-alpha.5", default-features = false }
@@ -40,6 +40,8 @@ postcard = { version = "1", features = ["use-std"] }
 # gRPC / protobuf stuff
 tonic = "0.14.5"
 tonic-prost = "0.14.5"
+tonic-tracing-opentelemetry = "0.32.2"
+tower = "0.5.3"
 prost = "0.14.3"
 prost-types = "0.14.3"
 prost-wkt-types = "0.7.1"
@@ -64,7 +66,7 @@ futures = "0.3.32"
 async-trait = "0.1.89"
 
 [dev-dependencies]
-testcontainers = "0.27.1"
+testcontainers = "0.27.2"
 opentelemetry_sdk = { version = "0.31.0", features = ["testing"] }
 
 [build-dependencies]
